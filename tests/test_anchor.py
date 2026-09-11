@@ -117,6 +117,12 @@ class RelocateTest(unittest.TestCase):
         m = relocate(self.anchor, {"app.py": BASE + "\ndef broken(:\n"})
         self.assertEqual(m.how, "unparseable")
 
+    def test_an_anchor_from_another_format_version_is_found_by_similarity(self):
+        """Fingerprints from a different implementation won't match; the code is still there."""
+        stale = dict(self.anchor, version=99, exact="not-comparable", shape="not-comparable")
+        m = relocate(stale, {"app.py": BASE})
+        self.assertEqual((m.how, m.similarity), ("changed", 1.0))
+
 
 class LookalikeTest(unittest.TestCase):
     """Short, generic statements must not be 'found' in some other lookalike."""

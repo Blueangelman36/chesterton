@@ -35,6 +35,13 @@ SKIP_TOKENS = {tokenize.NEWLINE, tokenize.NL, tokenize.INDENT, tokenize.DEDENT,
 # Fields that vary between Python versions or carry no meaning for identity.
 SKIP_FIELDS = {"ctx", "type_comment", "kind"}
 
+# Fingerprints are hashes of a Python-specific structure, so a different
+# implementation (tree-sitter, another language) will hash the same code
+# differently. Notes record the version that made them; older ones skip the hash
+# comparisons and are found by similarity instead, so `fence update` can re-pin
+# them rather than reporting every one as removed.
+ANCHOR_VERSION = 1
+
 MIN_DISTINCTIVE_TOKENS = 12
 CHANGED_THRESHOLD = 0.5
 SNIPPET_LINES = 12
@@ -111,6 +118,7 @@ def make_anchor(target: Candidate, siblings: list[Candidate]) -> dict:
     lookalikes = [c for c in _near(siblings, target.scope, _distinctive(target.tokens))
                   if c is not target and c.kind == target.kind]
     return {
+        "version": ANCHOR_VERSION,
         "path": target.path,
         "scope": target.scope,
         "kind": target.kind,
@@ -166,22 +174,23 @@ def locate(anchor: dict, index: Index) -> Match:
     # Same code in this file, possibly with renamed identifiers or a new home.
     # If there are fewer identical copies than when the note was made, one of
     # them was deleted and we can't vouch for this one.
-    for key, how in (("exact", "ok"), ("shape", "renamed")):
-        hits = [c for c in near if getattr(c, key) == anchor[key]]
-        here = [c for c in hits if c.scope == scope]
-        if here and len(here) >= dupes.get(key, 1):
-            return Match(how, closest(here))
-        if here and key == "exact":
-            return Match("ambiguous", closest(here))
-        if hits and not here:
-            return Match("moved", closest(hits))
-
-    if distinctive:
-        far = list(index.others(path))
-        for key in ("exact", "shape"):
-            hits = [c for c in far if getattr(c, key) == anchor[key]]
-            if hits:
+    if anchor.get("version") == ANCHOR_VERSION:
+        for key, how in (("exact", "ok"), ("shape", "renamed")):
+            hits = [c for c in near if getattr(c, key) == anchor[key]]
+            here = [c for c in hits if c.scope == scope]
+            if here and len(here) >= dupes.get(key, 1):
+                return Match(how, closest(here))
+            if here and key == "exact":
+                return Match("ambiguous", closest(here))
+            if hits and not here:
                 return Match("moved", closest(hits))
+
+        if distinctive:
+            far = list(index.others(path))
+            for key in ("exact", "shape"):
+                hits = [c for c in far if getattr(c, key) == anchor[key]]
+                if hits:
+                    return Match("moved", closest(hits))
 
     # Edited in place: the most similar statement of the same kind, as long as
     # it's more similar than any lookalike that was already there.

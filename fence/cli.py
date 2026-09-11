@@ -58,7 +58,7 @@ def cmd_init(args) -> int:
 def cmd_add(args) -> int:
     root = repo_root()
     path, start, end = _parse_loc(args.loc, root)
-    cands, target = _pick(root, path, start, end)
+    index, target = _pick(root, path, start, end)
     reason, source = args.message, args.source
     if args.from_blame:
         sha, message = blame(root, path, start)
@@ -68,7 +68,7 @@ def cmd_add(args) -> int:
         raise FenceError('say why with -m "...", or use --from-blame to borrow the message '
                          "of the commit that wrote the line")
     note = Store(root).create(reason.strip(), source, _author(root), target.snippet,
-                              A.make_anchor(target, cands))
+                              _anchor(index, target))
     _stage(root)
     print(f"fence: added {note['id']}  {path}:{target.line}  in {A.scope_label(target.scope)}")
     print(f"    {_first_line(target.snippet)}")
@@ -128,7 +128,7 @@ def cmd_update(args) -> int:
         if m.how not in ("ok", "renamed", "moved"):
             continue
         c = m.candidate
-        if _reanchor(store, note, c, index.get(c.path)):
+        if _reanchor(store, note, c, index):
             updated += 1
             if m.how != "ok":
                 print(f"fence: {note['id']} now follows {c.path}:{c.line}  in {A.scope_label(c.scope)}")
@@ -147,7 +147,7 @@ def cmd_confirm(args) -> int:
     if c is None:
         raise FenceError(f"can't find the code for {note['id']}; "
                          f"point at it with: fence reanchor {note['id']} <file>:<line>")
-    _reanchor(store, note, c, index.get(c.path))
+    _reanchor(store, note, c, index)
     _stage(root)
     print(f"fence: {note['id']} confirmed at {c.path}:{c.line}")
     return 0
@@ -158,8 +158,8 @@ def cmd_reanchor(args) -> int:
     store = Store(root)
     note = store.get(args.id)
     path, start, end = _parse_loc(args.loc, root)
-    cands, target = _pick(root, path, start, end)
-    _reanchor(store, note, target, cands)
+    index, target = _pick(root, path, start, end)
+    _reanchor(store, note, target, index)
     _stage(root)
     print(f"fence: {note['id']} now points at {path}:{target.line}  in {A.scope_label(target.scope)}")
     print(f"    {_first_line(target.snippet)}")
@@ -213,8 +213,13 @@ def _hints(counts: Counter, staged: bool) -> list[str]:
     return hints
 
 
-def _reanchor(store: Store, note: dict, target: A.Candidate, siblings: list[A.Candidate]) -> bool:
-    anchor = A.make_anchor(target, siblings)
+def _anchor(index: A.Index, target: A.Candidate) -> dict:
+    """Anchors count the copies of a statement elsewhere, so the whole repo is indexed."""
+    return A.make_anchor(target, index.get(target.path), index.others(target.path))
+
+
+def _reanchor(store: Store, note: dict, target: A.Candidate, index: A.Index) -> bool:
+    anchor = _anchor(index, target)
     if anchor == note["anchor"] and target.snippet == note["snippet"]:
         return False
     note["anchor"], note["snippet"] = anchor, target.snippet
@@ -223,15 +228,20 @@ def _reanchor(store: Store, note: dict, target: A.Candidate, siblings: list[A.Ca
 
 
 def _pick(root: Path, path: str, start: int, end: int):
-    source = WorktreeReader(root).read(path)
+    reader = WorktreeReader(root)
+    source = reader.read(path)
     if source is None:
         raise FenceError(f"{path}: no such file")
-    cands = A.candidates(path, source)
+    # Take the target from the index, so it is the same object as its siblings.
+    index = A.Index(reader)
+    cands = index.get(path)
+    if path in index.broken:
+        A.candidates(path, source)  # re-raise with the parse error in the message
     target = A.pick(cands, start, end)
     if target is None:
         span = f"{start}-{end}" if end != start else str(start)
         raise FenceError(f"no statement covers {path}:{span}")
-    return cands, target
+    return index, target
 
 
 def _parse_loc(loc: str, root: Path) -> tuple[str, int, int]:

@@ -117,6 +117,15 @@ class RelocateTest(unittest.TestCase):
         m = relocate(self.anchor, {"app.py": BASE + "\ndef broken(:\n"})
         self.assertEqual(m.how, "unparseable")
 
+    def test_a_reparsed_sibling_list_does_not_make_the_statement_its_own_rival(self):
+        """Callers may hand make_anchor a fresh parse; the target is somewhere in it."""
+        cands = A.candidates("app.py", BASE)
+        line = line_of(BASE, GUARD)
+        anchor = A.make_anchor(A.pick(cands, line, line), A.candidates("app.py", BASE))
+        self.assertEqual(anchor["rival"], 0.0)
+        m = relocate(anchor, {"app.py": BASE.replace('"unauthorized"', '"forbidden"')})
+        self.assertEqual(m.how, "changed")
+
     def test_an_anchor_from_another_format_version_is_found_by_similarity(self):
         """Fingerprints from a different implementation won't match; the code is still there."""
         stale = dict(self.anchor, version=99, exact="not-comparable", shape="not-comparable")
@@ -143,6 +152,18 @@ class LookalikeTest(unittest.TestCase):
         anchor = anchor_for(BASE, "time.sleep")
         m = relocate(anchor, {"app.py": BASE.replace("0.05", "0.1")})
         self.assertEqual(m.how, "changed")
+
+    def test_boilerplate_that_always_existed_elsewhere_is_not_a_move(self):
+        """A copy in another file that was there all along can't vouch for deleted code."""
+        shared = '        logger.info("starting %s with %d workers", self.name, self.count)\n'
+        app = "class A:\n    def start(self):\n" + shared
+        other = "class B:\n    def start(self):\n" + shared
+        cands = A.candidates("app.py", app)
+        line = line_of(app, "logger.info")
+        anchor = A.make_anchor(A.pick(cands, line, line), cands, A.candidates("other.py", other))
+        m = relocate(anchor, {"app.py": "class A:\n    def start(self):\n        pass\n",
+                              "other.py": other})
+        self.assertEqual(m.how, "removed")
 
     def test_removing_one_of_two_identical_statements_is_ambiguous(self):
         src = "def sync(client):\n    client.retry()\n    client.retry()\n"

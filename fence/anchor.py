@@ -112,11 +112,24 @@ def pick(cands: list[Candidate], start: int, end: int) -> Candidate | None:
     return min(covering)[2] if covering else None
 
 
-def make_anchor(target: Candidate, siblings: list[Candidate]) -> dict:
-    """Everything needed to find `target` again, including how crowded its neighborhood is."""
+def make_anchor(target: Candidate, siblings: list[Candidate], elsewhere=()) -> dict:
+    """Everything needed to find `target` again, including how crowded its neighborhood is.
+
+    `elsewhere` is the statements of every other file. Counting the copies that
+    already exist there is what later tells a real move apart from boilerplate
+    that was duplicated all along.
+    """
     same_scope = [c for c in siblings if c.scope == target.scope]
+    other_scope = [c for c in siblings if c.scope != target.scope]
+    elsewhere = list(elsewhere)
+    # The statement is not its own lookalike, even when `siblings` came from a
+    # separate parse of the same file and holds a different object for it.
     lookalikes = [c for c in _near(siblings, target.scope, _distinctive(target.tokens))
-                  if c is not target and c.kind == target.kind]
+                  if not _same_statement(c, target) and c.kind == target.kind]
+
+    def copies(pool, key):
+        return sum(getattr(c, key) == getattr(target, key) for c in pool)
+
     return {
         "version": ANCHOR_VERSION,
         "path": target.path,
@@ -125,8 +138,14 @@ def make_anchor(target: Candidate, siblings: list[Candidate]) -> dict:
         "line": target.line,
         "exact": target.exact,
         "shape": target.shape,
-        "dupes": {"exact": sum(c.exact == target.exact for c in same_scope),
-                  "shape": sum(c.shape == target.shape for c in same_scope)},
+        "dupes": {
+            "exact": copies(same_scope, "exact"),
+            "shape": copies(same_scope, "shape"),
+            "other_exact": copies(other_scope, "exact"),
+            "other_shape": copies(other_scope, "shape"),
+            "far_exact": copies(elsewhere, "exact"),
+            "far_shape": copies(elsewhere, "shape"),
+        },
         "rival": max((similarity(target.features, c.features) for c in lookalikes), default=0.0),
         "tokens": target.tokens,
     }
@@ -182,14 +201,18 @@ def locate(anchor: dict, index: Index) -> Match:
                 return Match(how, closest(here))
             if here and key == "exact":
                 return Match("ambiguous", closest(here))
-            if hits and not here:
+            if hits and not here and len(hits) > dupes.get(f"other_{key}", 0):
                 return Match("moved", closest(hits))
 
+        # A move means a copy turned up somewhere that didn't have one before.
+        # Boilerplate that was always duplicated elsewhere -- a main guard, a
+        # field default, a log line -- is not the statement this note was about,
+        # so it can't vouch for code that just disappeared.
         if distinctive:
             far = list(index.others(path))
             for key in ("exact", "shape"):
                 hits = [c for c in far if getattr(c, key) == anchor[key]]
-                if hits:
+                if len(hits) > dupes.get(f"far_{key}", 0):
                     return Match("moved", closest(hits))
 
     # Edited in place: the most similar statement of the same kind, as long as
@@ -218,6 +241,10 @@ def features(tokens: list[str]) -> set:
 def similarity(a: set, b: set) -> float:
     union = a | b
     return len(a & b) / len(union) if union else 1.0
+
+
+def _same_statement(a, b):
+    return a is b or (a.path == b.path and a.line == b.line and a.exact == b.exact)
 
 
 def _near(cands, scope, distinctive):

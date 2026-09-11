@@ -93,9 +93,37 @@ guards against false comfort:
   `fence` says so instead of assuming the survivor is the one you meant.
 - A fuzzy match only counts if it's more similar than any lookalike that already existed when
   the note was made. A neighbouring guard can't stand in for a deleted one.
+- A move has to be a copy appearing somewhere that didn't have one. The note records how many
+  copies already existed in other files, so boilerplate that was duplicated all along — a main
+  guard, a field default, a log line — can't vouch for code that just disappeared.
 
 Notes are plain JSON files in `.fence/notes/`, committed and reviewed with the code. There's
 no server and no account.
+
+## Measured on real code
+
+Against a real 22-file Python project, with 20 notes placed on statements picked at random.
+
+**Replaying its history.** Notes placed at the first commit, then walked forward through every
+later commit: 18 stayed `ok`, 2 reported `changed`, and nothing was falsely reported as removed.
+Both `changed` verdicts were right — a registry gained two entries, and a constructor gained a
+line. Caveat: that history contained no renames or file moves, so it proves little on its own.
+Hence the second harness.
+
+**Refactors with a known right answer** (`tools/stress.py`), applied to the same code:
+
+| Change | Must | Result |
+| --- | --- | --- |
+| Every file rewritten from its AST (all formatting and comments gone) | not alarm | 20/20 still found |
+| Identifiers renamed throughout a file | not alarm | 1/1 |
+| A class cut and appended to another file | not alarm | 1/1 |
+| The noted statement deleted outright | alarm | 20/20 caught |
+| A literal inside the noted statement changed | not stay silent | 9/9 flagged |
+
+The first run of that harness failed 5 of those cases: deleting `if __name__ == "__main__":` was
+reported as "moved", because an identical line lives in another file. Counting a token or two
+more would not have helped — long boilerplate is still boilerplate. That result is what the
+copies-elsewhere rule above exists to fix.
 
 ## Status
 
@@ -127,3 +155,11 @@ python -m unittest
 ```
 
 The suite includes end-to-end tests that create real git repos and drive the real pre-commit hook.
+
+Two harnesses measure the anchoring against real code. Both clone or restore what they read and
+never write to your repository:
+
+```bash
+python tools/replay.py <repo> <clone-dir>   # walk real history, count false alarms
+python tools/stress.py <clone-dir>          # apply refactors with a known right answer
+```

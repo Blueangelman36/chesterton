@@ -37,15 +37,11 @@ def py_files(root):
 def sample_notes(root, count, seed):
     """Spread notes over files, taking statements at random within each."""
     rng = random.Random(seed)
-    reader = WorktreeReader(root)
+    index = A.Index(WorktreeReader(root))
     by_file = {}
     for path in py_files(root):
-        source = reader.read(path)
-        if source is None:
-            continue
-        try:
-            cands = A.candidates(path, source)
-        except A.Unparseable:
+        cands = index.get(path)
+        if not cands:
             continue
         usable = [c for c in cands if len(c.tokens) >= 4]
         if usable:
@@ -63,10 +59,11 @@ def sample_notes(root, count, seed):
             notes.append({
                 "path": path,
                 "line": target.line,
+                "end_line": target.end_line,
                 "kind": target.kind,
                 "tokens": len(target.tokens),
                 "snippet": target.snippet,
-                "anchor": A.make_anchor(target, cands),
+                "anchor": A.make_anchor(target, cands, index.others(path)),
             })
             if len(notes) >= count:
                 break
@@ -86,8 +83,9 @@ def replay(root, commits, notes, maintain):
             note["at"] = f"{m.candidate.path}:{m.candidate.line}" if m.candidate else ""
             counts[m.how] += 1
             if maintain and m.how in ("ok", "renamed", "moved"):
-                note["anchor"] = A.make_anchor(m.candidate, index.get(m.candidate.path))
-                note["snippet"] = m.candidate.snippet
+                found = m.candidate
+                note["anchor"] = A.make_anchor(found, index.get(found.path), index.others(found.path))
+                note["snippet"] = found.snippet
         rows.append((sha, date_of(root, sha), counts))
     return rows, state
 

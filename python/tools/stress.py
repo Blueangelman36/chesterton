@@ -91,7 +91,13 @@ def rename(root, notes):
 
 
 def move(root, notes):
-    """Cut the function or class holding the most notes and append it to another file."""
+    """Cut the function or class holding the most notes and append it to another file.
+
+    Only distinctive statements are tested. Fence will not follow a short, generic
+    statement into another file on purpose -- `from x import y` looks the same
+    everywhere -- so counting those as failures would be testing the opposite of
+    what the tool promises.
+    """
     best = None
     for path in sorted({n["path"] for n in notes}):
         try:
@@ -103,7 +109,8 @@ def move(root, notes):
                 continue
             start = min([node.lineno] + [d.lineno for d in node.decorator_list])
             inside = [n for n in notes
-                      if n["path"] == path and start <= n["line"] <= node.end_lineno]
+                      if n["path"] == path and start <= n["line"] <= node.end_lineno
+                      and n["tokens"] >= A.MIN_DISTINCTIVE_TOKENS]
             if inside and (best is None or len(inside) > len(best[3])):
                 best = (path, start, node.end_lineno, inside)
     if best is None:
@@ -164,7 +171,8 @@ def edit_each(root, notes):
         if dirty:
             index.invalidate(dirty)
             dirty = None
-        lines = read(root, note["path"]).split("\n")
+        source = read(root, note["path"])
+        lines = source.split("\n")
         span = lines[note["line"] - 1:note["end_line"]]
         edited = _mutate("\n".join(span))
         if edited is None:
@@ -175,11 +183,24 @@ def edit_each(root, notes):
         if not parses(text):
             skipped.append(note)
             continue
+        if _same_tree(source, text):
+            # The mutation landed in a comment or other trivia. Nothing fence
+            # looks at changed, so staying quiet is the right answer and there
+            # is nothing to test.
+            skipped.append(note)
+            continue
         write(root, note["path"], text)
         index.invalidate(note["path"])
         dirty = note["path"]
         results.append((note, A.locate(note["anchor"], index)))
     return results, skipped
+
+
+def _same_tree(before, after):
+    try:
+        return ast.dump(ast.parse(before)) == ast.dump(ast.parse(after))
+    except (SyntaxError, ValueError):
+        return False
 
 
 def _mutate(text):

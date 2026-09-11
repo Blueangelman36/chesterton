@@ -435,6 +435,7 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
     let closest = |cands: &[&Candidate]| -> Candidate {
         cands
             .iter()
+            .copied()
             .min_by_key(|c| {
                 (
                     (c.path != anchor.path) as u8,
@@ -487,7 +488,7 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
     // it beats every lookalike that was already there.
     let wanted = features(&anchor.tokens);
     let mut best: Option<(f64, &Candidate)> = None;
-    for candidate in nearby.iter().filter(|c| c.kind == anchor.kind) {
+    for candidate in nearby.iter().copied().filter(|c| c.kind == anchor.kind) {
         let score = similarity(&wanted, &candidate.features());
         let ranked = score + if candidate.scope == anchor.scope { 0.1 } else { 0.0 };
         let better = match best {

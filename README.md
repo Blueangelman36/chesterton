@@ -18,7 +18,7 @@ No dependencies. Python 3.10+.
 
 ```bash
 git clone https://github.com/Blueangelman36/chesterton
-pip install -e chesterton        # or run it in place: python -m fence
+pip install -e chesterton/python  # or run it in place: python -m fence
 ```
 
 ```text
@@ -125,6 +125,11 @@ reported as "moved", because an identical line lives in another file. Counting a
 more would not have helped — long boilerplate is still boilerplate. That result is what the
 copies-elsewhere rule above exists to fix.
 
+**A larger corpus.** The same harness against a 287-file, 156,000-line slice of the Python 3.14
+standard library, with 40 notes: every note was still found after all 287 files were rewritten
+from their ASTs, 40/40 deletions were caught, 16/16 literal edits were flagged, and there were
+0 surprising verdicts. The anchoring held at that size. The speed did not — see Status.
+
 ## Status
 
 This is a prototype of the core loop: anchoring plus the hook.
@@ -135,6 +140,10 @@ This is a prototype of the core loop: anchoring plus the hook.
   speaking up; `fence reanchor` fixes it.
 - **Notes on large blocks are large**, because the anchor stores the block's token list. A
   MinHash signature would give them a fixed size.
+- **It is slow on large repositories.** Counting copies of a statement elsewhere means recording
+  or relocating a note parses every file in the repository. At 287 files a 40-note sweep takes
+  minutes. Caching parses across notes, or keeping a fingerprint index in `.fence/`, is the fix,
+  and it matters before anyone points this at a big codebase.
 - The hook only checks notes whose files are in the commit, so it never nags about code nobody
   touched.
 
@@ -148,13 +157,28 @@ This is a prototype of the core loop: anchoring plus the hook.
 3. **Surface notes where people are:** a PR check, and an editor hint on hover.
 4. **A single fast binary** (Rust) once the design settles.
 
+## Layout
+
+| Path | What |
+| --- | --- |
+| `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
+| `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
+| `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
+
+A second implementation (a Rust binary on tree-sitter) belongs in a sibling directory rather than
+a branch, so one pull request can change a rule and both implementations together, and both are
+held to the same conformance cases. Fingerprints are allowed to differ between implementations —
+that is what the anchor's `version` field is for.
+
 ## Development
 
 ```bash
+cd python
 python -m unittest
 ```
 
-The suite includes end-to-end tests that create real git repos and drive the real pre-commit hook.
+The suite includes end-to-end tests that create real git repos and drive the real pre-commit
+hook, plus the shared conformance cases.
 
 Two harnesses measure the anchoring against real code. Both clone or restore what they read and
 never write to your repository:

@@ -1,0 +1,253 @@
+# Relocation basics: can an implementation still find the statement a note was
+# pinned to? Every implementation must agree on these verdicts.
+#
+# Each case builds an anchor from the statement in `before` whose first line
+# contains `anchor_match`, then locates it in `after`.
+
+[[case]]
+name = "unchanged code is found"
+expect = "ok"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+
+[[case]]
+name = "reformatting, comments and shifted lines are ignored"
+expect = "ok"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+import os
+
+# Vendor quirk, see ticket 412.
+class Client:
+
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get(
+            "error"
+        ) == "unauthorized":  # still the same condition
+            raise AuthError(url)
+        return resp
+'''
+
+
+[[case]]
+name = "identifiers renamed consistently"
+expect = "renamed"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        response = self.session.get(url, timeout=10)
+        if response.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return response
+'''
+
+
+[[case]]
+name = "moved to another function in the same file"
+expect = "moved"
+expect_scope = "_check"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        _check(resp, url)
+        return resp
+
+
+def _check(resp, url):
+    if resp.json().get("error") == "unauthorized":
+        raise AuthError(url)
+'''
+
+
+[[case]]
+name = "moved to another file"
+expect = "moved"
+expect_file = "auth.py"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+from auth import check
+
+
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        check(resp, url)
+        return resp
+'''
+"auth.py" = '''
+def check(resp, url):
+    if resp.json().get("error") == "unauthorized":
+        raise AuthError(url)
+'''
+
+
+[[case]]
+name = "a literal inside the statement was edited"
+expect = "changed"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "forbidden":
+            raise AuthError(url)
+        return resp
+'''
+
+
+[[case]]
+name = "the statement was deleted"
+expect = "removed"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        return resp
+'''
+
+
+[[case]]
+name = "the whole file was deleted"
+expect = "removed"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"other.py" = '''
+VERSION = 3
+'''
+
+
+[[case]]
+name = "a file that does not parse is skipped, not reported as removed"
+expect = "unparseable"
+anchor_match = 'if resp.json()'
+
+[case.before]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+'''
+
+[case.after]
+"app.py" = '''
+class Client:
+    def fetch(self, url):
+        resp = self.session.get(url, timeout=10)
+        if resp.json().get("error") == "unauthorized":
+            raise AuthError(url)
+        return resp
+
+
+def broken(:
+'''

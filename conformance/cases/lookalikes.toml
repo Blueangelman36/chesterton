@@ -1,0 +1,129 @@
+# Lookalikes: the cases where it is tempting, and wrong, to say "found it".
+#
+# Generic code recurs everywhere. An implementation that matches a deleted
+# statement against some other copy of it stays silent exactly when it should
+# speak up, which is the failure that matters most here.
+
+[[case]]
+name = "a neighbouring guard does not stand in for the deleted one"
+expect = "removed"
+anchor_match = "if a is None"
+
+[case.before]
+"app.py" = '''
+def load(a, b):
+    if a is None:
+        return
+    if b is None:
+        return
+    return a + b
+'''
+
+[case.after]
+"app.py" = '''
+def load(a, b):
+    if b is None:
+        return
+    return a + b
+'''
+
+
+[[case]]
+name = "a generic statement is not followed into another function"
+expect = "removed"
+anchor_match = "return None"
+
+[case.before]
+"app.py" = '''
+def a():
+    return None
+
+
+def b():
+    return None
+'''
+
+[case.after]
+"app.py" = '''
+def a():
+    pass
+
+
+def b():
+    return None
+'''
+
+
+[[case]]
+name = "boilerplate that always existed elsewhere is not a move"
+expect = "removed"
+anchor_match = "logger.info"
+
+[case.before]
+"app.py" = '''
+class A:
+    def start(self):
+        logger.info("starting %s with %d workers", self.name, self.count)
+'''
+"other.py" = '''
+class B:
+    def start(self):
+        logger.info("starting %s with %d workers", self.name, self.count)
+'''
+
+[case.after]
+"app.py" = '''
+class A:
+    def start(self):
+        pass
+'''
+"other.py" = '''
+class B:
+    def start(self):
+        logger.info("starting %s with %d workers", self.name, self.count)
+'''
+
+
+[[case]]
+name = "a changed constant is reported, not silently accepted"
+expect = "changed"
+anchor_match = "time.sleep"
+
+[case.before]
+"app.py" = '''
+import time
+
+
+def focus(el):
+    time.sleep(0.05)
+    el.focus()
+'''
+
+[case.after]
+"app.py" = '''
+import time
+
+
+def focus(el):
+    time.sleep(0.1)
+    el.focus()
+'''
+
+
+[[case]]
+name = "removing one of two identical statements is ambiguous"
+expect = "ambiguous"
+anchor_match = "client.retry()"
+
+[case.before]
+"app.py" = '''
+def sync(client):
+    client.retry()
+    client.retry()
+'''
+
+[case.after]
+"app.py" = '''
+def sync(client):
+    client.retry()
+'''

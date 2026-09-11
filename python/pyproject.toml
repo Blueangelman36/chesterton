@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Remember why code exists, and speak up before it's removed."
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]

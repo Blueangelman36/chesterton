@@ -1,5 +1,7 @@
 # chesterton
 
+[![CI](https://github.com/Blueangelman36/chesterton/actions/workflows/ci.yml/badge.svg)](https://github.com/Blueangelman36/chesterton/actions/workflows/ci.yml)
+
 *Don't take down a fence until you know why it was put up.*
 
 `fence` remembers **why** code exists, and speaks up when a commit is about to delete it.
@@ -153,22 +155,29 @@ This is a prototype of the core loop: anchoring plus the hook.
    sentences that explain why code exists, and propose them as notes with a link to the source.
    Nobody writes documentation voluntarily, so the tool should do the writing and ask only for a
    yes or no.
-2. **Other languages** via tree-sitter.
-3. **Surface notes where people are:** a PR check, and an editor hint on hover.
-4. **A single fast binary** (Rust) once the design settles.
+2. **Finish the Rust implementation.** Its anchoring passes the shared conformance cases; the note
+   store, git plumbing and hook are not written yet, so `python/` is still the working command.
+   A single binary matters because a hook that needs the right Python environment in every clone
+   is an adoption tax.
+3. **Other languages.** The Rust side already parses with tree-sitter, so a new language is
+   mostly a grammar plus its statement and scope rules — and a set of conformance cases.
+4. **Make it fast on large repositories**, per Status above.
+5. **Surface notes where people are:** a PR check, and an editor hint on hover.
 
 ## Layout
 
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
+| `rust/` | Second implementation, on tree-sitter. Anchoring only so far — no note store, git plumbing or hook |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
 
-A second implementation (a Rust binary on tree-sitter) belongs in a sibling directory rather than
-a branch, so one pull request can change a rule and both implementations together, and both are
-held to the same conformance cases. Fingerprints are allowed to differ between implementations —
-that is what the anchor's `version` field is for.
+The two implementations sit side by side rather than on separate branches, so one pull request
+can change a rule and both implementations together, and CI holds both to the same conformance
+cases. They share no code and no fingerprints: one parses with Python's `ast`, the other with
+tree-sitter, and their hashes are deliberately different bytes — which is what the anchor's
+`version` field records. What they must share is the verdict, and that is all the cases check.
 
 ## Development
 

@@ -41,23 +41,30 @@ def blame(root: Path, path: str, line: int) -> tuple[str, str]:
     if set(sha) == {"0"}:
         raise GitError(f"{path}:{line} isn't committed yet, so there's no commit message to borrow")
     message = git("log", "-1", "--format=%B", sha, cwd=root)
-    kept = [line for line in message.splitlines() if not TRAILER.match(line)]
+    kept = [text for text in message.splitlines() if not TRAILER.match(text)]
     return sha, "\n".join(kept).strip()
 
 
 class WorktreeReader:
-    """Files as they are on disk."""
+    """Files as they are on disk.
+
+    A reader lives for one command, and the file listing is asked for once per
+    note that has to look beyond its own file, so it is worth keeping.
+    """
 
     def __init__(self, root: Path):
         self.root = root
+        self._paths: list[str] | None = None
 
     def read(self, path: str) -> str | None:
         file = self.root / path
         return file.read_text(encoding="utf-8", errors="replace") if file.is_file() else None
 
     def paths(self) -> list[str]:
-        out = git("ls-files", "--cached", "--others", "--exclude-standard", "-z", cwd=self.root)
-        return [p for p in out.split("\0") if p]
+        if self._paths is None:
+            out = git("ls-files", "--cached", "--others", "--exclude-standard", "-z", cwd=self.root)
+            self._paths = [p for p in out.split("\0") if p]
+        return self._paths
 
 
 class IndexReader:
@@ -65,6 +72,7 @@ class IndexReader:
 
     def __init__(self, root: Path):
         self.root = root
+        self._paths: list[str] | None = None
 
     def read(self, path: str) -> str | None:
         proc = subprocess.run(["git", "show", f":{path}"], cwd=self.root, capture_output=True,
@@ -72,5 +80,7 @@ class IndexReader:
         return proc.stdout if proc.returncode == 0 else None
 
     def paths(self) -> list[str]:
-        out = git("ls-files", "--cached", "-z", cwd=self.root)
-        return [p for p in out.split("\0") if p]
+        if self._paths is None:
+            out = git("ls-files", "--cached", "-z", cwd=self.root)
+            self._paths = [p for p in out.split("\0") if p]
+        return self._paths

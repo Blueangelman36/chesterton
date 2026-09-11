@@ -3,6 +3,7 @@
 import hashlib
 import json
 import time
+import uuid
 from pathlib import Path
 
 from . import FenceError
@@ -17,7 +18,7 @@ class Store:
     def notes(self) -> list[dict]:
         if not self.notes_dir.is_dir():
             return []
-        notes = [json.loads(p.read_text(encoding="utf-8")) for p in self.notes_dir.glob("*.json")]
+        notes = [_read(p) for p in self.notes_dir.glob("*.json")]
         return sorted(notes, key=lambda n: (n["anchor"]["path"], n["anchor"]["line"]))
 
     def get(self, prefix: str) -> dict:
@@ -55,9 +56,24 @@ class Store:
         (self.notes_dir / f"{note['id']}.json").unlink()
 
 
+def _read(path: Path) -> dict:
+    """A hand-edited note should name the file that is wrong, not raise a traceback."""
+    try:
+        note = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise FenceError(f"{path.name} is not readable as a note: {e}") from e
+    if not isinstance(note, dict) or "id" not in note or "path" not in note.get("anchor", {}):
+        raise FenceError(f"{path.name} is missing the fields of a note (id, anchor)")
+    return note
+
+
 def _write(path: Path, note: dict) -> None:
-    # Keep the token list on one line so the file stays readable in a diff.
-    anchor = dict(note["anchor"], tokens="__TOKENS__")
+    # Keep the token list on one line so the file stays readable in a diff. The
+    # placeholder is random because a fixed one could appear inside the note's
+    # own reason or snippet, which are written before it.
+    placeholder = f"__TOKENS_{uuid.uuid4().hex}__"
+    anchor = dict(note["anchor"], tokens=placeholder)
     text = json.dumps(dict(note, anchor=anchor), indent=2, ensure_ascii=False)
-    text = text.replace('"__TOKENS__"', json.dumps(note["anchor"]["tokens"], ensure_ascii=False))
+    text = text.replace(json.dumps(placeholder),
+                        json.dumps(note["anchor"]["tokens"], ensure_ascii=False))
     path.write_text(text + "\n", encoding="utf-8", newline="\n")

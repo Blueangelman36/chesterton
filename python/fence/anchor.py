@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import ast
 import bisect
-import copy
 import hashlib
+from collections import Counter
 import io
 import textwrap
 import tokenize
@@ -34,6 +34,9 @@ SKIP_TOKENS = {tokenize.NEWLINE, tokenize.NL, tokenize.INDENT, tokenize.DEDENT,
                tokenize.COMMENT, tokenize.ENDMARKER, tokenize.ENCODING}
 # Fields that vary between Python versions or carry no meaning for identity.
 SKIP_FIELDS = {"ctx", "type_comment", "kind"}
+# The string fields that hold a name, which `shape` renames away.
+IDENT_FIELDS = {("Name", "id"), ("arg", "arg"), ("Attribute", "attr"),
+                ("FunctionDef", "name"), ("AsyncFunctionDef", "name"), ("ClassDef", "name")}
 
 # Fingerprints are hashes of a Python-specific structure, so a different
 # implementation (tree-sitter, another language) will hash the same code
@@ -112,16 +115,28 @@ def pick(cands: list[Candidate], start: int, end: int) -> Candidate | None:
     return min(covering)[2] if covering else None
 
 
-def make_anchor(target: Candidate, siblings: list[Candidate], elsewhere=()) -> dict:
+def far_copies(target: Candidate, elsewhere) -> tuple[int, int]:
+    """Copies of a statement among candidates from other files, counted the slow way.
+
+    For callers holding a plain list; anything with an Index should ask it
+    instead, since it totals the whole repository once.
+    """
+    exact = shape = 0
+    for candidate in elsewhere:
+        exact += candidate.exact == target.exact
+        shape += candidate.shape == target.shape
+    return exact, shape
+
+
+def make_anchor(target: Candidate, siblings: list[Candidate], far: tuple[int, int] = (0, 0)) -> dict:
     """Everything needed to find `target` again, including how crowded its neighborhood is.
 
-    `elsewhere` is the statements of every other file. Counting the copies that
-    already exist there is what later tells a real move apart from boilerplate
-    that was duplicated all along.
+    `far` is how many copies of the statement already live in other files. That
+    count is what later tells a real move apart from boilerplate that was
+    duplicated all along.
     """
     same_scope = [c for c in siblings if c.scope == target.scope]
     other_scope = [c for c in siblings if c.scope != target.scope]
-    elsewhere = list(elsewhere)
     # The statement is not its own lookalike, even when `siblings` came from a
     # separate parse of the same file and holds a different object for it.
     lookalikes = [c for c in _near(siblings, target.scope, _distinctive(target.tokens))
@@ -143,8 +158,8 @@ def make_anchor(target: Candidate, siblings: list[Candidate], elsewhere=()) -> d
             "shape": copies(same_scope, "shape"),
             "other_exact": copies(other_scope, "exact"),
             "other_shape": copies(other_scope, "shape"),
-            "far_exact": copies(elsewhere, "exact"),
-            "far_shape": copies(elsewhere, "shape"),
+            "far_exact": far[0],
+            "far_shape": far[1],
         },
         "rival": max((similarity(target.features, c.features) for c in lookalikes), default=0.0),
         "tokens": target.tokens,
@@ -158,6 +173,7 @@ class Index:
         self.reader = reader
         self.broken: set[str] = set()
         self._files: dict[str, list[Candidate]] = {}
+        self._counts: tuple | None = None
 
     def get(self, path: str) -> list[Candidate]:
         if path not in self._files:
@@ -170,6 +186,36 @@ class Index:
                     self.broken.add(path)
             self._files[path] = cands
         return self._files[path]
+
+    def invalidate(self, path: str) -> None:
+        """Forget one file, for callers that edit a file and look again."""
+        self._files.pop(path, None)
+        self.broken.discard(path)
+        self._counts = None
+
+    def copies_elsewhere(self, path: str, exact: str, shape: str) -> tuple[int, int]:
+        """How many copies of these fingerprints live in other files.
+
+        Totalled once for the whole repository rather than by scanning every
+        statement per note, which was most of the cost of recording a note.
+        """
+        if self._counts is None:
+            totals: tuple[Counter, Counter] = (Counter(), Counter())
+            per_file: dict[str, tuple[Counter, Counter]] = {}
+            for other in self.reader.paths():
+                if not other.endswith(".py"):
+                    continue
+                here = (Counter(), Counter())
+                for candidate in self.get(other):
+                    here[0][candidate.exact] += 1
+                    here[1][candidate.shape] += 1
+                totals[0].update(here[0])
+                totals[1].update(here[1])
+                per_file[other] = here
+            self._counts = (totals, per_file)
+        totals, per_file = self._counts
+        mine = per_file.get(path, (Counter(), Counter()))
+        return totals[0][exact] - mine[0][exact], totals[1][shape] - mine[1][shape]
 
     def others(self, path: str) -> Iterator[Candidate]:
         for p in self.reader.paths():
@@ -261,15 +307,15 @@ def _candidate(path, node, scope, lines, toks, starts):
     end_col = _char_col(lines, node.end_lineno, node.end_col_offset)
     lo = bisect.bisect_left(starts, (first, col))
     hi = bisect.bisect_left(starts, (node.end_lineno, end_col))
-    shape = _Canonicalize().visit(copy.deepcopy(node))
+    exact, shape = _fingerprints(node)
     return Candidate(
         path=path,
         scope=scope,
         kind=_kind(node),
         line=first,
         end_line=node.end_lineno,
-        exact=_hash(_serialize(node)),
-        shape=_hash(_serialize(shape)),
+        exact=_hash(exact),
+        shape=_hash(shape),
         tokens=[text for _, text in toks[lo:hi]],
         snippet=_snippet(lines, first, node.end_lineno),
     )
@@ -282,46 +328,66 @@ def _kind(node):
     return name
 
 
-def _serialize(node) -> str:
-    """Like ast.dump, but stable across Python versions: skips empty and bookkeeping fields."""
-    if isinstance(node, ast.AST):
-        fields = [f"{name}={_serialize(value)}" for name, value in ast.iter_fields(node)
-                  if name not in SKIP_FIELDS and value is not None and value != []]
-        return f"{type(node).__name__}({', '.join(fields)})"
-    if isinstance(node, list):
-        return "[" + ", ".join(_serialize(v) for v in node) + "]"
-    return repr(node)
+def _fingerprints(node) -> tuple[str, str]:
+    """Render a statement twice in one walk: as written, and identifier-blind.
 
+    Like ast.dump, but skipping empty and bookkeeping fields so the rendering is
+    stable across Python versions. Renaming as we go, rather than renaming a copy
+    of the tree, is worth the small amount of bookkeeping: deep-copying every
+    statement was over half the cost of reading a file. It is safe because
+    ast.iter_fields yields each identifier field in the same order a walk of the
+    tree would have reached it, so the numbering comes out the same.
+    """
+    names: dict[str, str] = {}
+    exact: list[str] = []
+    shape: list[str] = []
+    # Hot loop: a statement is rendered once per enclosing statement, so this
+    # runs millions of times on a large repository. Hence no helper calls, and
+    # _fields directly instead of ast.iter_fields.
+    add_exact = exact.append
+    add_shape = shape.append
 
-class _Canonicalize(ast.NodeTransformer):
-    """Rename identifiers to v0, v1, ... in order of first appearance."""
+    def walk(value, identifier=False):
+        if isinstance(value, ast.AST):
+            kind = type(value).__name__
+            add_exact(kind + "(")
+            add_shape(kind + "(")
+            first = True
+            for field in value._fields:
+                if field in SKIP_FIELDS:
+                    continue
+                child = getattr(value, field, None)
+                if child is None or child == []:
+                    continue
+                if first:
+                    first = False
+                else:
+                    add_exact(", ")
+                    add_shape(", ")
+                add_exact(field + "=")
+                add_shape(field + "=")
+                walk(child, (kind, field) in IDENT_FIELDS)
+            add_exact(")")
+            add_shape(")")
+        elif isinstance(value, list):
+            add_exact("[")
+            add_shape("[")
+            for position, item in enumerate(value):
+                if position:
+                    add_exact(", ")
+                    add_shape(", ")
+                walk(item, identifier)
+            add_exact("]")
+            add_shape("]")
+        else:
+            exact.append(repr(value))
+            if identifier and isinstance(value, str):
+                shape.append(repr(names.setdefault(value, f"v{len(names)}")))
+            else:
+                shape.append(repr(value))
 
-    def __init__(self):
-        self.names = {}
-
-    def _canon(self, name):
-        return self.names.setdefault(name, f"v{len(self.names)}")
-
-    def visit_Name(self, node):
-        node.id = self._canon(node.id)
-        return node
-
-    def visit_arg(self, node):
-        node.arg = self._canon(node.arg)
-        self.generic_visit(node)
-        return node
-
-    def visit_Attribute(self, node):
-        self.generic_visit(node)
-        node.attr = self._canon(node.attr)
-        return node
-
-    def _visit_def(self, node):
-        node.name = self._canon(node.name)
-        self.generic_visit(node)
-        return node
-
-    visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = _visit_def
+    walk(node)
+    return "".join(exact), "".join(shape)
 
 
 def _tokens(source):

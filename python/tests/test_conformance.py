@@ -40,7 +40,9 @@ def anchor_for(case):
     for path in case["before"]:
         for candidate in index.get(path):
             if case["anchor_match"] in candidate.snippet.splitlines()[0]:
-                return A.make_anchor(candidate, index.get(path), index.others(path))
+                return A.make_anchor(
+                    candidate, index.get(path),
+                    index.copies_elsewhere(path, candidate.exact, candidate.shape))
     raise AssertionError(f"no statement matching {case['anchor_match']!r} in {case['name']!r}")
 
 

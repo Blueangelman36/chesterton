@@ -160,7 +160,9 @@ class LookalikeTest(unittest.TestCase):
         other = "class B:\n    def start(self):\n" + shared
         cands = A.candidates("app.py", app)
         line = line_of(app, "logger.info")
-        anchor = A.make_anchor(A.pick(cands, line, line), cands, A.candidates("other.py", other))
+        target = A.pick(cands, line, line)
+        anchor = A.make_anchor(target, cands,
+                               A.far_copies(target, A.candidates("other.py", other)))
         m = relocate(anchor, {"app.py": "class A:\n    def start(self):\n        pass\n",
                               "other.py": other})
         self.assertEqual(m.how, "removed")

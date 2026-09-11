@@ -122,10 +122,19 @@ def move(root, notes):
 
 
 def delete_each(root, notes):
-    """One note at a time: delete exactly the statement it points at."""
-    results, skipped = [], []
+    """One note at a time: delete exactly the statement it points at.
+
+    One index, re-reading only the file just edited. Rebuilding it per note meant
+    parsing the whole repository once per note, which on a few hundred files is
+    the difference between seconds and many minutes.
+    """
+    index = A.Index(WorktreeReader(root))
+    results, skipped, dirty = [], [], None
     for note in notes:
         restore(root)
+        if dirty:
+            index.invalidate(dirty)
+            dirty = None
         lines = read(root, note["path"]).split("\n")
         head = lines[note["line"] - 1]
         indent = " " * (len(head) - len(head.lstrip()))
@@ -140,16 +149,21 @@ def delete_each(root, notes):
             skipped.append(note)
             continue
         write(root, note["path"], text)
-        index = A.Index(WorktreeReader(root))
+        index.invalidate(note["path"])
+        dirty = note["path"]
         results.append((note, A.locate(note["anchor"], index)))
     return results, skipped
 
 
 def edit_each(root, notes):
     """One note at a time: change a literal inside the noted statement."""
-    results, skipped = [], []
+    index = A.Index(WorktreeReader(root))
+    results, skipped, dirty = [], [], None
     for note in notes:
         restore(root)
+        if dirty:
+            index.invalidate(dirty)
+            dirty = None
         lines = read(root, note["path"]).split("\n")
         span = lines[note["line"] - 1:note["end_line"]]
         edited = _mutate("\n".join(span))
@@ -162,7 +176,8 @@ def edit_each(root, notes):
             skipped.append(note)
             continue
         write(root, note["path"], text)
-        index = A.Index(WorktreeReader(root))
+        index.invalidate(note["path"])
+        dirty = note["path"]
         results.append((note, A.locate(note["anchor"], index)))
     return results, skipped
 

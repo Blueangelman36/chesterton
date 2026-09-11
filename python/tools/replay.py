@@ -63,7 +63,8 @@ def sample_notes(root, count, seed):
                 "kind": target.kind,
                 "tokens": len(target.tokens),
                 "snippet": target.snippet,
-                "anchor": A.make_anchor(target, cands, index.others(path)),
+                "anchor": A.make_anchor(target, cands,
+                                        index.copies_elsewhere(path, target.exact, target.shape)),
             })
             if len(notes) >= count:
                 break
@@ -84,7 +85,9 @@ def replay(root, commits, notes, maintain):
             counts[m.how] += 1
             if maintain and m.how in ("ok", "renamed", "moved"):
                 found = m.candidate
-                note["anchor"] = A.make_anchor(found, index.get(found.path), index.others(found.path))
+                note["anchor"] = A.make_anchor(
+                    found, index.get(found.path),
+                    index.copies_elsewhere(found.path, found.exact, found.shape))
                 note["snippet"] = found.snippet
         rows.append((sha, date_of(root, sha), counts))
     return rows, state

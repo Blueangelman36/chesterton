@@ -215,7 +215,8 @@ def _hints(counts: Counter, staged: bool) -> list[str]:
 
 def _anchor(index: A.Index, target: A.Candidate) -> dict:
     """Anchors count the copies of a statement elsewhere, so the whole repo is indexed."""
-    return A.make_anchor(target, index.get(target.path), index.others(target.path))
+    return A.make_anchor(target, index.get(target.path),
+                         index.copies_elsewhere(target.path, target.exact, target.shape))
 
 
 def _reanchor(store: Store, note: dict, target: A.Candidate, index: A.Index) -> bool:

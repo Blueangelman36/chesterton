@@ -34,16 +34,21 @@ SKIP_TOKENS = {tokenize.NEWLINE, tokenize.NL, tokenize.INDENT, tokenize.DEDENT,
                tokenize.COMMENT, tokenize.ENDMARKER, tokenize.ENCODING}
 # Fields that vary between Python versions or carry no meaning for identity.
 SKIP_FIELDS = {"ctx", "type_comment", "kind"}
-# The string fields that hold a name, which `shape` renames away.
-IDENT_FIELDS = {("Name", "id"), ("arg", "arg"), ("Attribute", "attr"),
-                ("FunctionDef", "name"), ("AsyncFunctionDef", "name"), ("ClassDef", "name")}
+# The string fields holding a name, and which namespace that name lives in.
+# Values and attributes are numbered separately because renaming a variable
+# leaves attributes spelled as they were: where a name is also an attribute
+# (`Error` alongside `Generic.Error`), one shared namespace shifted every
+# attribute's number and made an ordinary rename look like a deletion.
+IDENT_FIELDS = {("Name", "id"): "value", ("arg", "arg"): "value",
+                ("FunctionDef", "name"): "value", ("AsyncFunctionDef", "name"): "value",
+                ("ClassDef", "name"): "value", ("Attribute", "attr"): "attr"}
 
 # Fingerprints are hashes of a Python-specific structure, so a different
 # implementation (tree-sitter, another language) will hash the same code
 # differently. Notes record the version that made them; older ones skip the hash
 # comparisons and are found by similarity instead, so `fence update` can re-pin
 # them rather than reporting every one as removed.
-ANCHOR_VERSION = 1
+ANCHOR_VERSION = 3
 
 MIN_DISTINCTIVE_TOKENS = 12
 CHANGED_THRESHOLD = 0.5
@@ -338,7 +343,7 @@ def _fingerprints(node) -> tuple[str, str]:
     ast.iter_fields yields each identifier field in the same order a walk of the
     tree would have reached it, so the numbering comes out the same.
     """
-    names: dict[str, str] = {}
+    namespaces: dict[str, dict[str, str]] = {"value": {}, "attr": {}}
     exact: list[str] = []
     shape: list[str] = []
     # Hot loop: a statement is rendered once per enclosing statement, so this
@@ -347,7 +352,7 @@ def _fingerprints(node) -> tuple[str, str]:
     add_exact = exact.append
     add_shape = shape.append
 
-    def walk(value, identifier=False):
+    def walk(value, identifier=None):
         if isinstance(value, ast.AST):
             kind = type(value).__name__
             add_exact(kind + "(")
@@ -366,7 +371,7 @@ def _fingerprints(node) -> tuple[str, str]:
                     add_shape(", ")
                 add_exact(field + "=")
                 add_shape(field + "=")
-                walk(child, (kind, field) in IDENT_FIELDS)
+                walk(child, IDENT_FIELDS.get((kind, field)))
             add_exact(")")
             add_shape(")")
         elif isinstance(value, list):
@@ -382,7 +387,9 @@ def _fingerprints(node) -> tuple[str, str]:
         else:
             exact.append(repr(value))
             if identifier and isinstance(value, str):
-                shape.append(repr(names.setdefault(value, f"v{len(names)}")))
+                seen = namespaces[identifier]
+                prefix = "v" if identifier == "value" else "a"
+                shape.append(repr(seen.setdefault(value, f"{prefix}{len(seen)}")))
             else:
                 shape.append(repr(value))
 

@@ -71,12 +71,25 @@ def sample_notes(root, count, seed):
     return notes
 
 
-def replay(root, commits, notes, maintain):
+def changed_paths(root, before, after):
+    out = git("diff", "--name-only", "--no-renames", "-z", before, after, cwd=root)
+    return [p for p in out.split("\0") if p]
+
+
+def replay(root, commits, notes, maintain, start):
     state = [dict(n) for n in notes]
     rows = []
+    reader = WorktreeReader(root)
+    index = A.Index(reader)
+    previous = start
     for sha in commits:
         git("checkout", "-q", sha, cwd=root)
-        index = A.Index(WorktreeReader(root))
+        # Re-read only what the commit touched. Rebuilding the index per commit
+        # is fine for a handful of files and hopeless for a real project.
+        for path in changed_paths(root, previous, sha):
+            index.invalidate(path)
+        reader.refresh()
+        previous = sha
         counts = Counter()
         for note in state:
             m = A.locate(note["anchor"], index)
@@ -138,16 +151,26 @@ def print_notes(root, title, state):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("repo")
+    p.add_argument("repo", help="a local path or a clone URL")
     p.add_argument("clone")
     p.add_argument("--notes", type=int, default=20)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--max-commits", type=int, default=0,
+                   help="walk only the last N commits (0: all of them)")
+    p.add_argument("--depth", type=int, default=0,
+                   help="shallow clone depth, for large public repositories")
     args = p.parse_args()
 
     clone = Path(args.clone)
     if not clone.exists():
-        subprocess.run(["git", "clone", "--quiet", str(Path(args.repo).resolve()), str(clone)], check=True)
+        source = args.repo if "://" in args.repo else str(Path(args.repo).resolve())
+        command = ["git", "clone", "--quiet"]
+        if args.depth:
+            command += ["--depth", str(args.depth)]
+        subprocess.run([*command, source, str(clone)], check=True)
     commits = git("rev-list", "--reverse", "HEAD", cwd=clone).split()
+    if args.max_commits and len(commits) > args.max_commits:
+        commits = commits[-args.max_commits:]
     if len(commits) < 2:
         sys.exit("need at least two commits to replay")
 
@@ -165,7 +188,7 @@ def main():
     for title, maintain in (("STATIC (notes never re-pinned)", False),
                             ("MAINTAINED (re-pinned whenever found, as `fence update` does)", True)):
         git("checkout", "-q", commits[0], cwd=clone)
-        rows, state = replay(clone, commits[1:], notes, maintain)
+        rows, state = replay(clone, commits[1:], notes, maintain, commits[0])
         print_table(title, rows)
         print_notes(clone, title, state)
 

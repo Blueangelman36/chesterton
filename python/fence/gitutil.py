@@ -66,6 +66,10 @@ class WorktreeReader:
             self._paths = [p for p in out.split("\0") if p]
         return self._paths
 
+    def refresh(self) -> None:
+        """Forget the file listing, for callers that move the worktree under it."""
+        self._paths = None
+
 
 class IndexReader:
     """Files as they are staged: what the commit will actually contain."""

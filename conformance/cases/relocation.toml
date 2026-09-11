@@ -89,6 +89,43 @@ class Client:
 
 
 [[case]]
+name = "a variable renamed where the same word is also an attribute"
+# Found by running the stress harness over psf/requests: renaming variables
+# leaves attributes spelled as they were, so numbering both in one namespace
+# shifted every attribute and made the rename look like a deletion.
+expect = "renamed"
+anchor_match = "styles = {"
+
+[case.before]
+"theme.py" = '''
+from tokens import Error, Generic, Number
+
+
+class Theme:
+    styles = {
+        Number: "#990000",
+        Error: "#a40000",
+        Generic.Error: "#ef2929",
+        Generic.Number: "#4e9a06",
+    }
+'''
+
+[case.after]
+"theme.py" = '''
+from tokens import t_Error, t_Generic, t_Number
+
+
+class Theme:
+    styles = {
+        t_Number: "#990000",
+        t_Error: "#a40000",
+        t_Generic.Error: "#ef2929",
+        t_Generic.Number: "#4e9a06",
+    }
+'''
+
+
+[[case]]
 name = "moved to another function in the same file"
 expect = "moved"
 expect_scope = "_check"

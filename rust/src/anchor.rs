@@ -12,7 +12,7 @@ use tree_sitter::{Node, Parser, Tree};
 
 /// This implementation's fingerprint scheme. Anchors written by the Python one
 /// carry version 1, and their hashes are not comparable with these.
-pub const ANCHOR_VERSION: u32 = 2;
+pub const ANCHOR_VERSION: u32 = 4;
 pub const MIN_DISTINCTIVE_TOKENS: usize = 12;
 pub const CHANGED_THRESHOLD: f64 = 0.5;
 const SNIPPET_LINES: usize = 12;
@@ -243,9 +243,10 @@ fn candidate(node: Node, path: &str, source: &str, lines: &[&str], scope: &str) 
     collect_tokens(node, source, &mut tokens);
 
     let mut exact = String::new();
-    serialize(node, source, &mut Naming::Exact, &mut exact);
+    serialize(node, source, &mut Naming::Exact, &mut exact, false);
     let mut shape = String::new();
-    serialize(node, source, &mut Naming::Shape(HashMap::new()), &mut shape);
+    let mut shape_naming = Naming::Shape { values: HashMap::new(), attrs: HashMap::new() };
+    serialize(node, source, &mut shape_naming, &mut shape, false);
 
     Candidate {
         path: path.to_string(),
@@ -271,16 +272,21 @@ fn kind_of(node: Node) -> String {
 
 enum Naming {
     Exact,
-    Shape(HashMap<String, String>),
+    /// Values and attributes are numbered separately: renaming a variable leaves
+    /// attributes spelled as they were, so where a name is also an attribute
+    /// (`Error` alongside `Generic.Error`) one shared namespace shifted every
+    /// attribute's number and made an ordinary rename look like a deletion.
+    Shape { values: HashMap<String, String>, attrs: HashMap<String, String> },
 }
 
 impl Naming {
-    fn identifier(&mut self, text: &str) -> String {
+    fn identifier(&mut self, text: &str, attribute: bool) -> String {
         match self {
             Naming::Exact => text.to_string(),
-            Naming::Shape(seen) => {
+            Naming::Shape { values, attrs } => {
+                let (seen, prefix) = if attribute { (attrs, "a") } else { (values, "v") };
                 let next = seen.len();
-                seen.entry(text.to_string()).or_insert_with(|| format!("v{next}")).clone()
+                seen.entry(text.to_string()).or_insert_with(|| format!("{prefix}{next}")).clone()
             }
         }
     }
@@ -288,14 +294,14 @@ impl Naming {
 
 /// A canonical rendering of the subtree. Whitespace never appears in the tree,
 /// so formatting is ignored for free; comments have to be dropped by hand.
-fn serialize(node: Node, source: &str, naming: &mut Naming, out: &mut String) {
+fn serialize(node: Node, source: &str, naming: &mut Naming, out: &mut String, attribute: bool) {
     if node.kind() == "comment" {
         return;
     }
     if node.child_count() == 0 || node.kind() == "string" {
         let text = node.utf8_text(source.as_bytes()).unwrap_or("");
         if node.kind() == "identifier" {
-            out.push_str(&naming.identifier(text));
+            out.push_str(&naming.identifier(text, attribute));
         } else {
             out.push_str(node.kind());
             out.push(':');
@@ -306,9 +312,16 @@ fn serialize(node: Node, source: &str, naming: &mut Naming, out: &mut String) {
     }
     out.push_str(node.kind());
     out.push('(');
+    // The name after the dot is an attribute, not a value of the same name.
+    let attr_child = if node.kind() == "attribute" {
+        node.child_by_field_name("attribute").map(|child| child.id())
+    } else {
+        None
+    };
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        serialize(child, source, naming, out);
+        let is_attribute = attr_child == Some(child.id());
+        serialize(child, source, naming, out, is_attribute);
     }
     out.push(')');
 }

@@ -74,6 +74,23 @@ A retired note is the same object plus `retired` (a date) and `retired_because`.
 | `rival` | Similarity of the most similar other statement of the same kind nearby, when the note was made |
 | `tokens` | The statement's tokens, for similarity comparison |
 
+Versions are one registry shared by all implementations, because a note records
+the scheme that wrote it, not the program that was running:
+
+| Version | Scheme |
+| --- | --- |
+| 1 | Python `ast`, first scheme. Retired |
+| 2 | tree-sitter, first scheme. Retired |
+| 3 | Python `ast`, value names and attribute names numbered separately |
+| 4 | tree-sitter, the same |
+
+Schemes 1 and 2 shared one namespace between value names and attribute names.
+Renaming a variable in real code leaves attributes spelled as they were, so in a
+file where a name is also an attribute — `Error` alongside `Generic.Error`, which
+is ordinary in generated or table-driven code — every attribute's number shifted
+and an ordinary rename read as a deletion. The conformance suite now carries that
+case; it was found by running the stress harness over a real project.
+
 `version` exists because `exact`, `shape` and `tokens` are **implementation-defined**.
 A tree-sitter implementation will hash the same code differently from a Python
 `ast` one, and that is fine. An implementation that meets an anchor whose

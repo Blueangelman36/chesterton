@@ -1,0 +1,33 @@
+name: CI
+
+# Both implementations run the same conformance cases. If they ever disagree,
+# this is where it shows up rather than in someone's repository.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: python (reference)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit, end-to-end and conformance tests
+        run: python -m unittest -v
+        working-directory: python
+
+  rust:
+    name: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: cargo --version && rustc --version
+      - name: Conformance cases
+        run: cargo test
+        working-directory: rust

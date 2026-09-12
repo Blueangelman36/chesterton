@@ -25,7 +25,7 @@ import textwrap
 import tokenize
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Iterator, Protocol
+from typing import Protocol
 
 from . import FenceError
 
@@ -174,11 +174,12 @@ def make_anchor(target: Candidate, siblings: list[Candidate], far: tuple[int, in
 class Index:
     """Statements of every Python file a reader can see, parsed on demand."""
 
-    def __init__(self, reader: Reader):
+    def __init__(self, reader: Reader, cache=None):
         self.reader = reader
+        self.cache = cache
         self.broken: set[str] = set()
         self._files: dict[str, list[Candidate]] = {}
-        self._counts: tuple | None = None
+        self._tallied: tuple | None = None
 
     def get(self, path: str) -> list[Candidate]:
         if path not in self._files:
@@ -196,36 +197,87 @@ class Index:
         """Forget one file, for callers that edit a file and look again."""
         self._files.pop(path, None)
         self.broken.discard(path)
-        self._counts = None
+        if self._tallied is not None:
+            self._retally(path)
 
     def copies_elsewhere(self, path: str, exact: str, shape: str) -> tuple[int, int]:
-        """How many copies of these fingerprints live in other files.
-
-        Totalled once for the whole repository rather than by scanning every
-        statement per note, which was most of the cost of recording a note.
-        """
-        if self._counts is None:
-            totals: tuple[Counter, Counter] = (Counter(), Counter())
-            per_file: dict[str, tuple[Counter, Counter]] = {}
-            for other in self.reader.paths():
-                if not other.endswith(".py"):
-                    continue
-                here = (Counter(), Counter())
-                for candidate in self.get(other):
-                    here[0][candidate.exact] += 1
-                    here[1][candidate.shape] += 1
-                totals[0].update(here[0])
-                totals[1].update(here[1])
-                per_file[other] = here
-            self._counts = (totals, per_file)
-        totals, per_file = self._counts
+        """How many copies of these fingerprints live in other files."""
+        totals, per_file, _ = self._tally()
         mine = per_file.get(path, (Counter(), Counter()))
         return totals[0][exact] - mine[0][exact], totals[1][shape] - mine[1][shape]
 
-    def others(self, path: str) -> Iterator[Candidate]:
-        for p in self.reader.paths():
-            if p != path and p.endswith(".py"):
-                yield from self.get(p)
+    def find_elsewhere(self, path: str, fingerprint: str, key: str) -> list[Candidate]:
+        """Statements in other files carrying this fingerprint.
+
+        Only the files the tally says can contain it are parsed, so looking for
+        code that moved costs one file rather than the whole repository.
+        """
+        _, _, where = self._tally()
+        slot = 0 if key == "exact" else 1
+        found = []
+        for other in where[slot].get(fingerprint, ()):
+            if other != path:
+                found.extend(c for c in self.get(other) if getattr(c, key) == fingerprint)
+        return found
+
+    def _tally(self) -> tuple:
+        """Fingerprint counts for every file, and which files hold each fingerprint.
+
+        The one place that looks at the whole repository, so it is also where the
+        parse cache is filled and written.
+        """
+        if self._tallied is None:
+            totals: tuple[Counter, Counter] = (Counter(), Counter())
+            per_file: dict[str, tuple[Counter, Counter]] = {}
+            where: tuple[dict, dict] = ({}, {})
+            for other in self.reader.paths():
+                if not other.endswith(".py"):
+                    continue
+                counts = self._counts_for(other)
+                if counts is None:
+                    continue
+                per_file[other] = counts
+                for slot in (0, 1):
+                    totals[slot].update(counts[slot])
+                    for fingerprint in counts[slot]:
+                        where[slot].setdefault(fingerprint, []).append(other)
+            if self.cache is not None:
+                self.cache.save(keep=per_file)
+            self._tallied = (totals, per_file, where)
+        return self._tallied
+
+    def _counts_for(self, path: str) -> tuple[Counter, Counter] | None:
+        if self.cache is None:
+            return _count(self.get(path))  # no point reading bytes nothing will check
+        source = self.reader.read(path)
+        if source is None:
+            return None
+        known = self.cache.get(path, source)
+        if known is not None:
+            return known
+        counts = _count(self.get(path))
+        self.cache.put(path, source, counts)
+        return counts
+
+    def _retally(self, path: str) -> None:
+        """Swap one file's counts in place, so editing a file doesn't cost a full tally."""
+        totals, per_file, where = self._tallied
+        previous = per_file.pop(path, None)
+        if previous is not None:
+            for slot in (0, 1):
+                totals[slot].subtract(previous[slot])
+                for fingerprint in previous[slot]:
+                    holders = where[slot].get(fingerprint)
+                    if holders and path in holders:
+                        holders.remove(path)
+        current = self._counts_for(path)
+        if current is None:
+            return
+        per_file[path] = current
+        for slot in (0, 1):
+            totals[slot].update(current[slot])
+            for fingerprint in current[slot]:
+                where[slot].setdefault(fingerprint, []).append(path)
 
 
 def locate(anchor: dict, index: Index) -> Match:
@@ -260,11 +312,12 @@ def locate(anchor: dict, index: Index) -> Match:
         # field default, a log line -- is not the statement this note was about,
         # so it can't vouch for code that just disappeared.
         if distinctive:
-            far = list(index.others(path))
-            for key in ("exact", "shape"):
-                hits = [c for c in far if getattr(c, key) == anchor[key]]
-                if len(hits) > dupes.get(f"far_{key}", 0):
-                    return Match("moved", closest(hits))
+            far = index.copies_elsewhere(path, anchor["exact"], anchor["shape"])
+            for key, count in (("exact", far[0]), ("shape", far[1])):
+                if count > dupes.get(f"far_{key}", 0):
+                    hits = index.find_elsewhere(path, anchor[key], key)
+                    if hits:
+                        return Match("moved", closest(hits))
 
     # Edited in place: the most similar statement of the same kind, as long as
     # it's more similar than any lookalike that was already there.
@@ -292,6 +345,10 @@ def features(tokens: list[str]) -> set:
 def similarity(a: set, b: set) -> float:
     union = a | b
     return len(a & b) / len(union) if union else 1.0
+
+
+def _count(found: list[Candidate]) -> tuple[Counter, Counter]:
+    return Counter(c.exact for c in found), Counter(c.shape for c in found)
 
 
 def _same_statement(a, b):

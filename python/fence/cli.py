@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import FenceError
 from . import anchor as A
+from .cache import Cache
 from .gitutil import (GitError, IndexReader, WorktreeReader, blame, git,
                       hooks_dir, repo_root, staged_paths)
 from .store import Store
@@ -100,9 +101,11 @@ def cmd_check(args) -> int:
         # Only what this commit touches: never nag about code nobody is editing.
         touched = set(staged_paths(root))
         notes = [n for n in notes if n["anchor"]["path"] in touched]
-        index = A.Index(IndexReader(root))
+        # The cache is keyed by content, so staged files that nobody edited hit
+        # it anyway. Read-only: a commit shouldn't be writing files.
+        index = A.Index(IndexReader(root), Cache(root, A.ANCHOR_VERSION, writable=False))
     else:
-        index = A.Index(WorktreeReader(root))
+        index = _worktree_index(root)
 
     results = [(n, A.locate(n["anchor"], index)) for n in notes]
     shown = [(n, m) for n, m in results if not (args.staged and m.how == "ok")]
@@ -121,7 +124,7 @@ def cmd_check(args) -> int:
 def cmd_update(args) -> int:
     root = repo_root()
     store = Store(root)
-    index = A.Index(WorktreeReader(root))
+    index = _worktree_index(root)
     updated = 0
     for note in store.notes():
         m = A.locate(note["anchor"], index)
@@ -142,7 +145,7 @@ def cmd_confirm(args) -> int:
     root = repo_root()
     store = Store(root)
     note = store.get(args.id)
-    index = A.Index(WorktreeReader(root))
+    index = _worktree_index(root)
     c = A.locate(note["anchor"], index).candidate
     if c is None:
         raise FenceError(f"can't find the code for {note['id']}; "
@@ -213,6 +216,11 @@ def _hints(counts: Counter, staged: bool) -> list[str]:
     return hints
 
 
+def _worktree_index(root: Path) -> A.Index:
+    """Files as they are on disk, with the parse cache, which is keyed to them."""
+    return A.Index(WorktreeReader(root), Cache(root, A.ANCHOR_VERSION))
+
+
 def _anchor(index: A.Index, target: A.Candidate) -> dict:
     """Anchors count the copies of a statement elsewhere, so the whole repo is indexed."""
     return A.make_anchor(target, index.get(target.path),
@@ -234,7 +242,7 @@ def _pick(root: Path, path: str, start: int, end: int):
     if source is None:
         raise FenceError(f"{path}: no such file")
     # Take the target from the index, so it is the same object as its siblings.
-    index = A.Index(reader)
+    index = A.Index(reader, Cache(root, A.ANCHOR_VERSION))
     cands = index.get(path)
     if path in index.broken:
         A.candidates(path, source)  # re-raise with the parse error in the message

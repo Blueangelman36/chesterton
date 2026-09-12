@@ -169,6 +169,7 @@ parsing is everything, and locating is free.
 | Anchor 40 notes, once files are parsed | ~6s | 1.0s |
 | Locate 40 notes against a parsed index | 0.00s | 0.00s |
 | The whole stress harness over the corpus | >10 min | 51s |
+| Count copies across django's 2,932 files | 32.4s | 1.4s (cache warm) |
 
 Three changes, none of which move a single fingerprint: identifiers are renamed *while* the
 statement is serialized rather than on a deep copy of it — copying was over half the cost of
@@ -186,11 +187,10 @@ This is a prototype of the core loop: anchoring plus the hook.
   speaking up; `fence reanchor` fixes it.
 - **Notes on large blocks are large**, because the anchor stores the block's token list. A
   MinHash signature would give them a fixed size.
-- **Recording a note reads the whole repository.** Knowing how many copies of a statement already
-  live elsewhere means parsing every file: about 8s for 287 files and 156,000 lines. The hook
-  doesn't pay that — it parses only the files in the commit, unless a note has gone missing — but
-  `fence add` and `fence update` do. A parse cache under `.fence/`, keyed by file content, is the
-  fix, and it is what stands between this and a repository of a few thousand files.
+- **The first command on a large repository is slow.** Knowing how many copies of a statement live
+  elsewhere means looking at every file, and the first look has to parse them: 32s for django's
+  2,932 files. After that the parse cache in `.fence/cache.json` brings it to 1.4s, and only files
+  whose content changed are parsed again. Cold is still cold, and the cache costs 9 MB there.
 - The hook only checks notes whose files are in the commit, so it never nags about code nobody
   touched.
 

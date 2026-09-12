@@ -106,6 +106,30 @@ class CliTest(unittest.TestCase):
         self.assertEqual(note["reason"], FIRST_COMMIT)
         self.assertTrue(note["source"].startswith("commit "))
 
+    def test_the_parse_cache_is_written_and_stays_out_of_the_commit(self):
+        code, out = self.fence("add", f"app.py:{line_of(BASE, 'time.sleep')}",
+                               "-m", "Safari fires focus twice without it")
+        self.assertEqual(code, 0, out)
+        cache = self.repo / ".fence" / "cache.json"
+        self.assertTrue(cache.is_file())
+        self.assertIn("app.py", json.loads(cache.read_text(encoding="utf-8"))["files"])
+        self.assertEqual(self.commit("second note").returncode, 0)
+        self.assertNotIn("cache.json", git(self.repo, "ls-files").stdout)
+
+    def test_a_warm_cache_gives_the_same_answers(self):
+        self.fence("add", f"app.py:{line_of(BASE, 'time.sleep')}", "-m", "keep the delay")
+        cold = self.fence("check")[1]
+        warm = self.fence("check")[1]
+        self.assertEqual(cold.count("[ok]"), 2)
+        self.assertEqual(cold, warm)
+
+    def test_an_edit_is_noticed_even_though_the_cache_is_warm(self):
+        self.fence("check")
+        self.edit(GUARD_BLOCK, "")
+        code, out = self.fence("check")
+        self.assertEqual(code, 1)
+        self.assertIn("[REMOVED]", out)
+
     def test_bad_location_is_a_clear_error(self):
         code, out = self.fence("add", "app.py", "-m", "x")
         self.assertEqual(code, 2)

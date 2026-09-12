@@ -9,7 +9,12 @@ code. The conformance suite is what enforces the second half.
 ```
 .fence/notes/<id>.json      active notes
 .fence/retired/<id>.json    notes whose reason no longer applies
+.fence/cache.json           derived: fingerprints per file, keyed by content
 ```
+
+Only the first two belong in a commit, and `.fence/.gitignore` keeps the third
+out of one. An implementation may cache however it likes, or not at all; the
+cache is not part of this format. Delete it and nothing is lost but time.
 
 Plain files, committed with the code, reviewed in the same pull request. No
 server, no database, no account.

@@ -188,9 +188,11 @@ This is a prototype of the core loop: anchoring plus the hook.
 - **Notes on large blocks are large**, because the anchor stores the block's token list. A
   MinHash signature would give them a fixed size.
 - **The first command on a large repository is slow.** Knowing how many copies of a statement live
-  elsewhere means looking at every file, and the first look has to parse them: 32s for django's
-  2,932 files. After that the parse cache in `.fence/cache.json` brings it to 1.4s, and only files
-  whose content changed are parsed again. Cold is still cold, and the cache costs 9 MB there.
+  elsewhere means looking at every file, and the first look has to parse them all. On django's
+  2,932 files `fence add` takes 30s the first time and 1.6s afterwards, and `fence check` 0.3s,
+  because `.fence/cache.json` keeps each file's fingerprints against a hash of its contents and
+  only files that actually changed are parsed again. Cold is still cold, and the cache is 9 MB
+  there. It is derived data: it gitignores itself, and deleting it costs nothing but time.
 - The hook only checks notes whose files are in the commit, so it never nags about code nobody
   touched.
 

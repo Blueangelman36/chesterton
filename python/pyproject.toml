@@ -10,6 +10,27 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = []
+keywords = ["git", "hooks", "pre-commit", "code-review", "documentation", "refactoring"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+
+# These resolve once the repository is public, which publishing effectively makes it:
+# the source distribution carries the source.
+[project.urls]
+Homepage = "https://github.com/Blueangelman36/chesterton"
+Repository = "https://github.com/Blueangelman36/chesterton"
+Issues = "https://github.com/Blueangelman36/chesterton/issues"
 
 [project.scripts]
 fence = "fence.cli:main"

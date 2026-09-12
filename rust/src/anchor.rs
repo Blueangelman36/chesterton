@@ -25,6 +25,10 @@ pub enum How {
     Moved,
     Changed,
     Ambiguous,
+    /// Written under another implementation's scheme, so its fingerprints mean
+    /// nothing here. Not the same as the code having changed, and not grounds
+    /// for blocking a commit.
+    Foreign,
     Removed,
     Unparseable,
 }
@@ -37,6 +41,7 @@ impl How {
             How::Moved => "moved",
             How::Changed => "changed",
             How::Ambiguous => "ambiguous",
+            How::Foreign => "foreign",
             How::Removed => "removed",
             How::Unparseable => "unparseable",
         }
@@ -73,6 +78,133 @@ impl Candidate {
 enum Key {
     Exact,
     Shape,
+}
+
+/// What a statement, a scope and a name are, per language.
+///
+/// Everything language-specific lives here. Adding a language is a grammar plus
+/// answers to these questions, not a change to how anchoring works.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lang {
+    Python,
+    TypeScript,
+    Tsx,
+}
+
+impl Lang {
+    pub fn of(path: &str) -> Option<Lang> {
+        let lower = path.to_ascii_lowercase();
+        for suffix in [".py", ".pyi"] {
+            if lower.ends_with(suffix) {
+                return Some(Lang::Python);
+            }
+        }
+        for suffix in [".ts", ".mts", ".cts"] {
+            if lower.ends_with(suffix) {
+                return Some(Lang::TypeScript);
+            }
+        }
+        // JSX lives in .js as often as in .jsx, and the TSX grammar reads both.
+        for suffix in [".tsx", ".jsx", ".js", ".mjs", ".cjs"] {
+            if lower.ends_with(suffix) {
+                return Some(Lang::Tsx);
+            }
+        }
+        None
+    }
+
+    fn grammar(self) -> tree_sitter::Language {
+        match self {
+            Lang::Python => tree_sitter_python::LANGUAGE.into(),
+            Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        }
+    }
+
+    /// Nodes whose named children are statements.
+    fn holds_statements(self, kind: &str) -> bool {
+        match self {
+            Lang::Python => matches!(kind, "block" | "module"),
+            _ => matches!(
+                kind,
+                "program" | "statement_block" | "class_body" | "switch_case" | "switch_default"
+            ),
+        }
+    }
+
+    /// A leaf in spirit: descending into a string would compare its pieces.
+    fn is_atom(self, kind: &str) -> bool {
+        match self {
+            Lang::Python => kind == "string",
+            _ => matches!(kind, "string" | "template_string"),
+        }
+    }
+
+    fn is_identifier(self, kind: &str) -> bool {
+        match self {
+            Lang::Python => kind == "identifier",
+            _ => matches!(
+                kind,
+                "identifier"
+                    | "property_identifier"
+                    | "shorthand_property_identifier"
+                    | "shorthand_property_identifier_pattern"
+                    | "type_identifier"
+            ),
+        }
+    }
+
+    /// A property name is an attribute wherever it turns up, not only after a dot.
+    fn identifier_is_attribute(self, kind: &str) -> bool {
+        self != Lang::Python && kind == "property_identifier"
+    }
+
+    /// The child holding a name in the attribute namespace rather than the value one.
+    fn attribute_child(self, node: Node) -> Option<usize> {
+        let field = match self {
+            Lang::Python if node.kind() == "attribute" => "attribute",
+            Lang::Python => return None,
+            _ if node.kind() == "member_expression" => "property",
+            _ => return None,
+        };
+        node.child_by_field_name(field).map(|child| child.id())
+    }
+
+    /// The name this node introduces a scope under, if it introduces one.
+    fn scope_name(self, node: Node, source: &str) -> Option<String> {
+        let named = |n: Node| -> Option<String> {
+            n.child_by_field_name("name")?
+                .utf8_text(source.as_bytes())
+                .ok()
+                .map(str::to_string)
+        };
+        match self {
+            Lang::Python => match node.kind() {
+                "function_definition" | "class_definition" => named(node),
+                _ => None,
+            },
+            _ => match node.kind() {
+                "function_declaration"
+                | "generator_function_declaration"
+                | "class_declaration"
+                | "abstract_class_declaration"
+                | "interface_declaration"
+                | "enum_declaration"
+                | "method_definition" => named(node),
+                // `const Chart = () => {...}` is how much of a TypeScript codebase is
+                // written; without this, every arrow body would share one scope.
+                "variable_declarator" => {
+                    let value = node.child_by_field_name("value")?;
+                    if matches!(value.kind(), "arrow_function" | "function_expression") {
+                        named(node)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+        }
+    }
 }
 
 /// Where an implementation gets files from: the worktree, the index, or a test.
@@ -187,7 +319,7 @@ impl Index {
     pub fn scan_paths(source: &dyn Source, paths: &[String]) -> Self {
         let mut sources = BTreeMap::new();
         for path in paths {
-            if path.ends_with(".py") {
+            if Lang::of(path).is_some() {
                 if let Some(text) = source.read(path) {
                     sources.insert(path.clone(), text);
                 }
@@ -223,68 +355,74 @@ pub fn scope_label(scope: &str) -> &str {
     if scope.is_empty() { "<module>" } else { scope }
 }
 
-pub fn parse(source: &str) -> Option<Tree> {
+pub fn parse(lang: Lang, source: &str) -> Option<Tree> {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_python::LANGUAGE.into()).ok()?;
+    parser.set_language(&lang.grammar()).ok()?;
     parser.parse(source, None)
 }
 
-/// Every statement in a file, outermost first, with its fingerprints.
-/// `None` when the file does not parse.
+/// Every statement in a file, outermost first, with its fingerprints. `None`
+/// when the file does not parse, or is in a language this build does not read.
 pub fn candidates(path: &str, source: &str) -> Option<Vec<Candidate>> {
-    let tree = parse(source)?;
+    let lang = Lang::of(path)?;
+    let tree = parse(lang, source)?;
     let root = tree.root_node();
     if root.has_error() {
         return None;
     }
     let lines: Vec<&str> = source.split('\n').collect();
     let mut out = Vec::new();
-    walk(root, path, source, &lines, "", &mut out);
+    walk(lang, root, path, source, &lines, "", &mut out);
     Some(out)
 }
 
-/// Statements are the named children of a block or module, which is exactly
-/// what a statement is in the grammar, without naming every statement kind.
-fn walk(node: Node, path: &str, source: &str, lines: &[&str], scope: &str, out: &mut Vec<Candidate>) {
-    let container = matches!(node.kind(), "block" | "module");
+/// Statements are the named children of a block, which is what a statement is in
+/// the grammar, without having to name every statement kind in every language.
+fn walk(
+    lang: Lang,
+    node: Node,
+    path: &str,
+    source: &str,
+    lines: &[&str],
+    scope: &str,
+    out: &mut Vec<Candidate>,
+) {
+    let container = lang.holds_statements(node.kind());
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         if child.kind() == "comment" {
             continue;
         }
         if container {
-            out.push(candidate(child, path, source, lines, scope));
+            out.push(candidate(lang, child, path, source, lines, scope));
         }
-        let inner = match child.kind() {
-            "function_definition" | "class_definition" => match name_of(child, source) {
-                Some(name) if scope.is_empty() => name,
-                Some(name) => format!("{scope}.{name}"),
-                None => scope.to_string(),
-            },
-            _ => scope.to_string(),
+        let inner = match lang.scope_name(child, source) {
+            Some(name) if scope.is_empty() => name,
+            Some(name) => format!("{scope}.{name}"),
+            None => scope.to_string(),
         };
-        walk(child, path, source, lines, &inner, out);
+        walk(lang, child, path, source, lines, &inner, out);
     }
 }
 
-fn name_of(node: Node, source: &str) -> Option<String> {
-    node.child_by_field_name("name")?
-        .utf8_text(source.as_bytes())
-        .ok()
-        .map(str::to_string)
-}
-
-fn candidate(node: Node, path: &str, source: &str, lines: &[&str], scope: &str) -> Candidate {
+fn candidate(
+    lang: Lang,
+    node: Node,
+    path: &str,
+    source: &str,
+    lines: &[&str],
+    scope: &str,
+) -> Candidate {
     let line = node.start_position().row + 1;
     let end_line = node.end_position().row + 1;
     let mut tokens = Vec::new();
-    collect_tokens(node, source, &mut tokens);
+    collect_tokens(lang, node, source, &mut tokens);
 
     let mut exact = String::new();
-    serialize(node, source, &mut Naming::Exact, &mut exact, false);
+    serialize(lang, node, source, &mut Naming::Exact, &mut exact, false);
     let mut shape = String::new();
     let mut shape_naming = Naming::Shape { values: HashMap::new(), attrs: HashMap::new() };
-    serialize(node, source, &mut shape_naming, &mut shape, false);
+    serialize(lang, node, source, &mut shape_naming, &mut shape, false);
 
     Candidate {
         path: path.to_string(),
@@ -332,13 +470,21 @@ impl Naming {
 
 /// A canonical rendering of the subtree. Whitespace never appears in the tree,
 /// so formatting is ignored for free; comments have to be dropped by hand.
-fn serialize(node: Node, source: &str, naming: &mut Naming, out: &mut String, attribute: bool) {
+fn serialize(
+    lang: Lang,
+    node: Node,
+    source: &str,
+    naming: &mut Naming,
+    out: &mut String,
+    attribute: bool,
+) {
     if node.kind() == "comment" {
         return;
     }
-    if node.child_count() == 0 || node.kind() == "string" {
+    if node.child_count() == 0 || lang.is_atom(node.kind()) {
         let text = node.utf8_text(source.as_bytes()).unwrap_or("");
-        if node.kind() == "identifier" {
+        if lang.is_identifier(node.kind()) {
+            let attribute = attribute || lang.identifier_is_attribute(node.kind());
             out.push_str(&naming.identifier(text, attribute));
         } else {
             out.push_str(node.kind());
@@ -351,24 +497,20 @@ fn serialize(node: Node, source: &str, naming: &mut Naming, out: &mut String, at
     out.push_str(node.kind());
     out.push('(');
     // The name after the dot is an attribute, not a value of the same name.
-    let attr_child = if node.kind() == "attribute" {
-        node.child_by_field_name("attribute").map(|child| child.id())
-    } else {
-        None
-    };
+    let attr_child = lang.attribute_child(node);
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         let is_attribute = attr_child == Some(child.id());
-        serialize(child, source, naming, out, is_attribute);
+        serialize(lang, child, source, naming, out, is_attribute);
     }
     out.push(')');
 }
 
-fn collect_tokens(node: Node, source: &str, out: &mut Vec<String>) {
+fn collect_tokens(lang: Lang, node: Node, source: &str, out: &mut Vec<String>) {
     if node.kind() == "comment" {
         return;
     }
-    if node.child_count() == 0 || node.kind() == "string" {
+    if node.child_count() == 0 || lang.is_atom(node.kind()) {
         let text = node.utf8_text(source.as_bytes()).unwrap_or("");
         if text.is_empty() {
             return;
@@ -382,7 +524,7 @@ fn collect_tokens(node: Node, source: &str, out: &mut Vec<String>) {
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_tokens(child, source, out);
+        collect_tokens(lang, child, source, out);
     }
 }
 
@@ -498,7 +640,12 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
             .clone()
     };
 
-    if anchor.version == ANCHOR_VERSION {
+    // An anchor from another implementation's scheme cannot be compared by
+    // fingerprint at all. Saying so is the honest answer: `changed` blames the
+    // code, and `removed` would block a commit over a difference between tools.
+    let unfamiliar = anchor.version != ANCHOR_VERSION;
+
+    if !unfamiliar {
         for (key, how) in [(Key::Exact, How::Ok), (Key::Shape, How::Renamed)] {
             let hits: Vec<&Candidate> = nearby
                 .iter()
@@ -555,13 +702,23 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
             best = Some((score, candidate));
         }
     }
-    if let Some((score, candidate)) = best
-        && score >= CHANGED_THRESHOLD
-        && score > anchor.rival
-    {
-        return Match { how: How::Changed, candidate: Some(candidate.clone()), similarity: score };
+    if let Some((score, candidate)) = best {
+        if unfamiliar && score >= CHANGED_THRESHOLD {
+            return Match {
+                how: How::Foreign,
+                candidate: Some(candidate.clone()),
+                similarity: score,
+            };
+        }
+        if !unfamiliar && score >= CHANGED_THRESHOLD && score > anchor.rival {
+            return Match {
+                how: How::Changed,
+                candidate: Some(candidate.clone()),
+                similarity: score,
+            };
+        }
     }
-    Match::none(How::Removed)
+    Match::none(if unfamiliar { How::Foreign } else { How::Removed })
 }
 
 /// FNV-1a. Fingerprints only ever get compared with others from this same

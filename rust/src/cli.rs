@@ -539,6 +539,12 @@ fn hints(results: &[(Note, Match)], staged: bool) -> Vec<String> {
     if seen(How::Renamed) || seen(How::Moved) {
         hints.push("follow code that moved:      fence update".to_string());
     }
+    if seen(How::Foreign) {
+        hints.push(
+            "written by another build:    fence update re-pins them here (docs/FORMAT.md)"
+                .to_string(),
+        );
+    }
     hints
 }
 
@@ -582,6 +588,10 @@ fn describe(note: &Note, located: &Match) -> String {
             "    an identical copy of this statement was removed; can't tell which one this note is about"
                 .to_string(),
         ),
+        How::Foreign => lines.push(format!(
+            "    written by another implementation (anchor version {}), so its fingerprints mean nothing here",
+            note.anchor.version
+        )),
         How::Unparseable => lines.push(format!(
             "    {} doesn't parse right now, so this note wasn't checked",
             note.anchor.path
@@ -626,6 +636,7 @@ fn label(how: &How) -> &'static str {
         How::Moved => "moved",
         How::Changed => "changed",
         How::Ambiguous => "ambiguous",
+        How::Foreign => "other tool",
         How::Removed => "REMOVED",
         How::Unparseable => "skipped",
     }

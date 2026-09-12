@@ -126,11 +126,19 @@ class RelocateTest(unittest.TestCase):
         m = relocate(anchor, {"app.py": BASE.replace('"unauthorized"', '"forbidden"')})
         self.assertEqual(m.how, "changed")
 
-    def test_an_anchor_from_another_format_version_is_found_by_similarity(self):
-        """Fingerprints from a different implementation won't match; the code is still there."""
+    def test_an_anchor_from_another_implementation_says_so(self):
+        """Its fingerprints mean nothing here, which is not the same as the code changing."""
         stale = dict(self.anchor, version=99, exact="not-comparable", shape="not-comparable")
         m = relocate(stale, {"app.py": BASE})
-        self.assertEqual((m.how, m.similarity), ("changed", 1.0))
+        self.assertEqual((m.how, m.similarity), ("foreign", 1.0))
+        self.assertEqual(m.candidate.line, line_of(BASE, GUARD))
+
+    def test_an_anchor_from_another_implementation_never_blocks_a_commit(self):
+        """A difference between tools is not evidence that code was deleted."""
+        stale = dict(self.anchor, version=99, exact="not-comparable", shape="not-comparable")
+        m = relocate(stale, {"app.py": BASE.replace(GUARD_BLOCK, "")})
+        self.assertEqual(m.how, "foreign")
+        self.assertIsNone(m.candidate)
 
 
 class LookalikeTest(unittest.TestCase):

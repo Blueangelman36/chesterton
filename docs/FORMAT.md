@@ -118,6 +118,7 @@ version. Anything else reports every note in the repository as removed.
 | `moved` | Same statement in another scope or file | passes |
 | `changed` | Best similar statement of the same kind | warns |
 | `ambiguous` | One of several identical copies is gone; which one is unknowable | warns |
+| `foreign` | Written under another scheme, so its fingerprints cannot be compared | warns |
 | `removed` | Not found | **blocks** |
 | `unparseable` | The file does not currently parse, so nothing was checked | warns |
 

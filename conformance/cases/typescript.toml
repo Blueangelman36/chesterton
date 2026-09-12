@@ -1,0 +1,251 @@
+# The same questions, asked of TypeScript. An implementation that cannot read
+# this language skips these cases; one that can must reach the same verdicts it
+# reaches for Python, because the rules are about code, not about syntax.
+
+[[case]]
+name = "unchanged code is found"
+language = "typescript"
+expect = "ok"
+anchor_match = "if (response.status === 200"
+
+[case.before]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+[case.after]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+
+[[case]]
+name = "reformatting and comments are ignored"
+language = "typescript"
+expect = "ok"
+anchor_match = "if (response.status === 200"
+
+[case.before]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+[case.after]
+"client.ts" = '''
+import { AuthError } from "./errors";
+
+export class Client {
+
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+
+    // The vendor answers 200 even when the credentials are wrong.
+    if (response.status === 200 &&
+        response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+
+    return response;
+  }
+}
+'''
+
+
+[[case]]
+name = "identifiers renamed consistently"
+language = "typescript"
+expect = "renamed"
+anchor_match = "if (response.status === 200"
+
+[case.before]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+[case.after]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const reply = await this.session.get(url, { timeout: 10 });
+    if (reply.status === 200 && reply.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return reply;
+  }
+}
+'''
+
+
+[[case]]
+name = "moved to another file"
+language = "typescript"
+expect = "moved"
+expect_file = "auth.ts"
+anchor_match = "if (response.status === 200"
+
+[case.before]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+[case.after]
+"client.ts" = '''
+import { check } from "./auth";
+
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    check(response, url);
+    return response;
+  }
+}
+'''
+"auth.ts" = '''
+export function check(response: Response, url: string): void {
+  if (response.status === 200 && response.body.error === "unauthorized") {
+    throw new AuthError(url);
+  }
+}
+'''
+
+
+[[case]]
+name = "a literal inside the statement was edited"
+language = "typescript"
+expect = "changed"
+anchor_match = "if (response.status === 200"
+
+[case.before]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+[case.after]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "forbidden") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+
+[[case]]
+name = "the statement was deleted"
+language = "typescript"
+expect = "removed"
+anchor_match = "if (response.status === 200"
+
+[case.before]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    if (response.status === 200 && response.body.error === "unauthorized") {
+      throw new AuthError(url);
+    }
+    return response;
+  }
+}
+'''
+
+[case.after]
+"client.ts" = '''
+export class Client {
+  async fetch(url: string): Promise<Response> {
+    const response = await this.session.get(url, { timeout: 10 });
+    return response;
+  }
+}
+'''
+
+
+[[case]]
+name = "boilerplate that always existed elsewhere is not a move"
+language = "typescript"
+expect = "removed"
+anchor_match = "logger.info"
+
+[case.before]
+"app.ts" = '''
+export class Pipeline {
+  start(): void {
+    logger.info("starting %s with %d workers", this.name, this.workers);
+  }
+}
+'''
+"other.ts" = '''
+export class Ingest {
+  start(): void {
+    logger.info("starting %s with %d workers", this.name, this.workers);
+  }
+}
+'''
+
+[case.after]
+"app.ts" = '''
+export class Pipeline {
+  start(): void {
+    return;
+  }
+}
+'''
+"other.ts" = '''
+export class Ingest {
+  start(): void {
+    logger.info("starting %s with %d workers", this.name, this.workers);
+  }
+}
+'''

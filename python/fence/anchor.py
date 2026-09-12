@@ -293,10 +293,16 @@ def locate(anchor: dict, index: Index) -> Match:
     def closest(cands):
         return min(cands, key=lambda c: (c.path != path, c.scope != scope, abs(c.line - line)))
 
+    # An anchor from another implementation's scheme cannot be compared by
+    # fingerprint at all. Saying so is the honest answer: calling it `changed`
+    # blames the code, and calling it `removed` would block a commit over a
+    # difference between tools.
+    unfamiliar = anchor.get("version") != ANCHOR_VERSION
+
     # Same code in this file, possibly with renamed identifiers or a new home.
     # If there are fewer identical copies than when the note was made, one of
     # them was deleted and we can't vouch for this one.
-    if anchor.get("version") == ANCHOR_VERSION:
+    if not unfamiliar:
         for key, how in (("exact", "ok"), ("shape", "renamed")):
             hits = [c for c in near if getattr(c, key) == anchor[key]]
             here = [c for c in hits if c.scope == scope]
@@ -326,9 +332,11 @@ def locate(anchor: dict, index: Index) -> Match:
     if scored:
         sim, best = max(scored, key=lambda sc: (sc[0] + (0.1 if sc[1].scope == scope else 0.0),
                                                 -abs(sc[1].line - line)))
-        if sim >= CHANGED_THRESHOLD and sim > anchor.get("rival", 0.0):
+        if unfamiliar and sim >= CHANGED_THRESHOLD:
+            return Match("foreign", best, sim)
+        if not unfamiliar and sim >= CHANGED_THRESHOLD and sim > anchor.get("rival", 0.0):
             return Match("changed", best, sim)
-    return Match("removed")
+    return Match("foreign") if unfamiliar else Match("removed")
 
 
 def scope_label(scope: str) -> str:

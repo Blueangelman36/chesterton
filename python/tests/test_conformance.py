@@ -31,7 +31,10 @@ def load_cases():
         with path.open("rb") as handle:
             data = tomllib.load(handle)
         for case in data.get("case", []):
-            yield path.stem, case
+            # This implementation reads Python. Cases in other languages belong
+            # to implementations that read those, and are run there.
+            if case.get("language", "python") == "python":
+                yield path.stem, case
 
 
 def anchor_for(case):

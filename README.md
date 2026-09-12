@@ -61,7 +61,8 @@ fence: 1559744b now follows client.py:4  in Client.fetch
 
 | Command | What it does |
 | --- | --- |
-| `fence init` | Install the pre-commit hook |
+| `fence init` | Install the pre-commit hook. `--agents` also writes an `AGENTS.md` block and a Claude Code skill |
+| `fence why FILE[:LINE]` | What reasons are recorded for this file or line. `--json` for machine-readable output |
 | `fence add FILE:LINE[-END] -m "why"` | Record why a statement exists. `--from-blame` borrows the message of the commit that wrote the line; `--source` records a link or ticket |
 | `fence list [PATH]` | List notes |
 | `fence check [--staged]` | Find each note's code and report what happened to it. `--staged` is what the hook runs: staged files only |
@@ -71,6 +72,24 @@ fence: 1559744b now follows client.py:4  in Client.fetch
 | `fence retire ID -m "what changed"` | The reason no longer applies. The note moves to `.fence/retired/`, because why a fence came down is worth remembering too |
 
 IDs can be shortened to any unique prefix.
+
+## For coding agents
+
+An agent editing a file it did not write is in exactly the position this tool exists for: it can
+see what the code does and not why, and "this looks redundant" is how a guard gets deleted. Two
+commands cover it.
+
+```bash
+fence why src/client.py --json    # before changing code you did not write
+fence check --json                # what a blocked commit is objecting to
+```
+
+`--json` output names the note, its `status` (the verdict), the `reason`, and where the code was
+`recorded_at` and is `found_at` now. That shape is meant to stay stable.
+
+`fence init --agents` writes the instructions where agents will actually meet them: a block in
+`AGENTS.md` and a skill in `.claude/skills/fence/`. Discovery is the whole problem — a tool an
+agent never hears about may as well not exist. It appends once and is safe to re-run.
 
 ## How it finds code again
 

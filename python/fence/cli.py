@@ -1,6 +1,7 @@
 """fence: remember why code exists, and speak up before it's removed."""
 
 import argparse
+import json
 import sys
 from collections import Counter
 from pathlib import Path
@@ -38,6 +39,80 @@ def main(argv: list[str] | None = None) -> int:
         print(f"fence: {e}", file=sys.stderr)
         return 2
 
+
+AGENTS_MARKER = "<!-- fence -->"
+
+AGENTS_BLOCK = """<!-- fence -->
+## Why code exists
+
+Some code in this repository has a recorded reason. Before deleting or rewriting
+code you did not write, ask for it:
+
+```bash
+fence why <file>            # or <file>:<line>; --json for machine-readable output
+```
+
+If a commit is blocked, the message names a note id, and the code was kept
+deliberately. Either `fence retire <id> -m "what changed"` when the reason no
+longer applies, or `fence reanchor <id> <file>:<line>` when the code moved
+somewhere the tool could not follow it. `git commit --no-verify` skips the check
+without recording anything, so prefer either of the other two.
+
+When you find out why something non-obvious has to be the way it is, write it
+down where the next reader will meet it:
+
+```bash
+fence add <file>:<line> -m "why"
+```
+<!-- /fence -->
+"""
+
+SKILL = """---
+name: fence
+description: Look up why code exists before changing or deleting it, and resolve a commit blocked by a recorded reason. Use when editing unfamiliar code, when a pre-commit hook mentions a fence note id, or when someone asks why a guard, retry, sleep or workaround is there.
+---
+
+# fence
+
+`fence` records why code exists and blocks commits that delete it. Notes are pinned
+to statements, so they follow the code through reformatting, renames and moves.
+
+## Before changing code you did not write
+
+```bash
+fence why src/client.py          # every recorded reason in the file
+fence why src/client.py:42       # just the ones covering that line
+fence why src/client.py --json   # same, machine-readable
+```
+
+A reason is evidence about the code's past that is not in the code. Take it
+seriously: the usual failure this prevents is deleting a guard that looks
+redundant and is not.
+
+## When a commit is blocked
+
+The hook prints the note id, the reason, and the code that is going away. Decide
+which of these is true, and do not reach for `--no-verify` to get past it:
+
+- the reason no longer applies: `fence retire <id> -m "what changed"`
+- the code moved and fence could not follow: `fence reanchor <id> <file>:<line>`
+- the code changed but the reason still holds: `fence confirm <id>`
+
+## When you learn something
+
+```bash
+fence add <file>:<line> -m "why this has to be this way"
+fence add <file>:<line> --from-blame     # borrow the commit message that wrote it
+```
+
+Record the reason, not the behaviour. "Retries twice" is in the code already;
+"the vendor returns 200 on auth failure" is not.
+
+## Verdicts
+
+`ok` and `renamed` and `moved` pass. `changed` and `ambiguous` warn: the code was
+edited, so check whether the reason still holds. `removed` blocks the commit.
+"""
 
 FENCE_README = """# .fence
 
@@ -79,6 +154,45 @@ def cmd_init(args) -> int:
                     encoding="utf-8", newline="\n")
     hook.chmod(0o755)
     print('fence: installed pre-commit hook. Record a reason with: fence add <file>:<line> -m "why"')
+    if args.agents:
+        for written in _install_agent_docs(root):
+            print(f"fence: wrote {written}")
+    else:
+        print("fence: `fence init --agents` also tells coding agents the notes are here.")
+    return 0
+
+
+def cmd_why(args) -> int:
+    root = repo_root()
+    target, start, end = _parse_target(args.loc, root)
+    notes = [n for n in Store(root).notes() if _under(n["anchor"]["path"], target)]
+    index = _worktree_index(root)
+
+    found = []
+    for note in notes:
+        match = A.locate(note["anchor"], index)
+        first = match.candidate.line if match.candidate else note["anchor"]["line"]
+        last = match.candidate.end_line if match.candidate else first
+        if start is not None and (last < start or first > end):
+            continue
+        found.append((note, match))
+
+    if args.json:
+        print(json.dumps({"notes": [_as_json(n, m) for n, m in found]}, indent=2))
+        return 0
+    if not found:
+        where = target if start is None else f"{target}:{start}"
+        print(f"fence: nothing recorded for {where}")
+        return 0
+    for note, match in found:
+        anchor, c = note["anchor"], match.candidate
+        location = f"{c.path}:{c.line}" if c else f"{anchor['path']}:{anchor['line']}"
+        scope = A.scope_label(c.scope if c else anchor["scope"])
+        print(f"{location}  in {scope}  [{LABELS[match.how]}]  {note['id']}")
+        print(_block(note["reason"], "why: "))
+        if note.get("source"):
+            print(_block(note["source"], "from:"))
+        print(f"    code: {_first_line(note['snippet'])}")
     return 0
 
 
@@ -134,6 +248,16 @@ def cmd_check(args) -> int:
         index = _worktree_index(root)
 
     results = [(n, A.locate(n["anchor"], index)) for n in notes]
+    if args.json:
+        counted = Counter(m.how for _, m in results)
+        print(json.dumps({
+            "checked": len(results),
+            "counts": {k: counted[k] for k in LABELS if counted[k]},
+            "blocked": bool(counted["removed"]),
+            "notes": [_as_json(n, m) for n, m in results],
+        }, indent=2))
+        return 1 if counted["removed"] else 0
+
     shown = [(n, m) for n, m in results if not (args.staged and m.how == "ok")]
     for note, m in shown:
         print("\n".join(_describe(note, m)))
@@ -242,6 +366,61 @@ def _hints(counts: Counter, staged: bool) -> list[str]:
     return hints
 
 
+def _as_json(note: dict, match: A.Match) -> dict:
+    """The shape agents read. Keep it stable: something out there parses it."""
+    anchor, c = note["anchor"], match.candidate
+    return {
+        "id": note["id"],
+        "status": match.how,
+        "reason": note["reason"],
+        "source": note.get("source"),
+        "author": note.get("author"),
+        "created": note.get("created"),
+        "similarity": round(match.similarity, 3) if match.how == "changed" else None,
+        "recorded_at": {"path": anchor["path"], "line": anchor["line"],
+                        "scope": A.scope_label(anchor["scope"])},
+        "found_at": ({"path": c.path, "line": c.line, "end_line": c.end_line,
+                      "scope": A.scope_label(c.scope)} if c else None),
+        "snippet": note["snippet"],
+    }
+
+
+def _block(text: str, label: str) -> str:
+    lines = text.strip().splitlines() or [""]
+    following = "".join(f"\n    {' ' * len(label)} {line}" for line in lines[1:])
+    return f"    {label} {lines[0]}{following}"
+
+
+def _parse_target(loc: str, root: Path) -> tuple[str, int | None, int | None]:
+    """A file or directory, optionally narrowed to a line or a range."""
+    _, sep, span = loc.rpartition(":")
+    if sep and span and span.replace("-", "").isdigit():
+        return _parse_loc(loc, root)
+    return _repo_path(loc, root), None, None
+
+
+def _under(path: str, target: str) -> bool:
+    return path == target or path.startswith(target.rstrip("/") + "/")
+
+
+def _install_agent_docs(root: Path) -> list[str]:
+    """Discovery is the bottleneck: a tool an agent never hears about may as well not exist."""
+    written = []
+    agents = root / "AGENTS.md"
+    existing = agents.read_text(encoding="utf-8", errors="replace") if agents.exists() else ""
+    if AGENTS_MARKER not in existing:
+        separator = "\n\n" if existing.strip() else ""
+        agents.write_text(existing.rstrip("\n") + separator + AGENTS_BLOCK,
+                          encoding="utf-8", newline="\n")
+        written.append("AGENTS.md")
+    skill = root / ".claude" / "skills" / "fence" / "SKILL.md"
+    if not skill.exists():
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        skill.write_text(SKILL, encoding="utf-8", newline="\n")
+        written.append(str(skill.relative_to(root)).replace("\\", "/"))
+    return written
+
+
 def _explain(fence_dir: Path) -> None:
     """Leave an explanation for whoever meets .fence in a pull request cold."""
     readme = fence_dir / "README.md"
@@ -340,7 +519,14 @@ def _parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
 
     s = sub.add_parser("init", help="install the pre-commit hook")
+    s.add_argument("--agents", action="store_true",
+                   help="also tell coding agents: an AGENTS.md block and a Claude Code skill")
     s.set_defaults(run=cmd_init)
+
+    s = sub.add_parser("why", help="what reasons are recorded for this file or line")
+    s.add_argument("loc", metavar="FILE[:LINE[-END]]")
+    s.add_argument("--json", action="store_true", help="machine-readable output")
+    s.set_defaults(run=cmd_why)
 
     s = sub.add_parser("add", help="record why a statement exists")
     s.add_argument("loc", metavar="FILE:LINE[-END]")
@@ -357,6 +543,7 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("check", help="find each note's code and report what happened to it")
     s.add_argument("--staged", action="store_true",
                    help="check staged files only (what the pre-commit hook runs)")
+    s.add_argument("--json", action="store_true", help="machine-readable output")
     s.set_defaults(run=cmd_check)
 
     s = sub.add_parser("update", help="re-pin notes whose code was renamed or moved")

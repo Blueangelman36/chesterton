@@ -106,6 +106,44 @@ class CliTest(unittest.TestCase):
         self.assertEqual(note["reason"], FIRST_COMMIT)
         self.assertTrue(note["source"].startswith("commit "))
 
+    def test_why_gives_the_reason_recorded_for_a_file(self):
+        code, out = self.fence("why", "app.py")
+        self.assertEqual(code, 0, out)
+        self.assertIn(REASON, out)
+        self.assertIn(self.note["id"], out)
+
+    def test_why_narrows_to_a_line(self):
+        covered = line_of(BASE, "if resp.json()")
+        self.assertIn(REASON, self.fence("why", f"app.py:{covered}")[1])
+        self.assertIn("nothing recorded", self.fence("why", f"app.py:{line_of(BASE, 'def focus')}")[1])
+
+    def test_why_json_is_machine_readable(self):
+        payload = json.loads(self.fence("why", "app.py", "--json")[1])
+        found = payload["notes"][0]
+        self.assertEqual(found["id"], self.note["id"])
+        self.assertEqual(found["status"], "ok")
+        self.assertEqual(found["reason"], REASON)
+        self.assertEqual(found["found_at"]["path"], "app.py")
+
+    def test_check_json_says_what_is_blocking(self):
+        self.edit(GUARD_BLOCK, "")
+        code, out = self.fence("check", "--json")
+        payload = json.loads(out)
+        self.assertEqual(code, 1)
+        self.assertTrue(payload["blocked"])
+        self.assertEqual(payload["counts"], {"removed": 1})
+        self.assertEqual(payload["notes"][0]["status"], "removed")
+        self.assertIsNone(payload["notes"][0]["found_at"])
+
+    def test_init_agents_installs_instructions_once(self):
+        self.fence("init", "--agents")
+        agents = (self.repo / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("fence why", agents)
+        skill = self.repo / ".claude" / "skills" / "fence" / "SKILL.md"
+        self.assertIn("name: fence", skill.read_text(encoding="utf-8"))
+        self.fence("init", "--agents")
+        self.assertEqual((self.repo / "AGENTS.md").read_text(encoding="utf-8"), agents)
+
     def test_init_leaves_an_explanation_for_whoever_finds_the_directory(self):
         readme = self.repo / ".fence" / "README.md"
         self.assertTrue(readme.is_file())

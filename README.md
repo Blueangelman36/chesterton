@@ -143,6 +143,11 @@ four well-known ones. 3,613 Python files in total:
 | django/django | 2,932 | 0 |
 | Python 3.14 standard library slice | 287 | 0 |
 
+Replaying their histories held every note too: 20 notes placed at the start of a window and walked
+forward commit by commit were still `ok` at the end for requests, flask, pytest and django — 24 to
+39 commits each — with nothing falsely reported as removed, both with and without re-pinning.
+Django's 2,930 files take 107s to walk that way, since only the files a commit touched are re-read.
+
 That run earned its keep immediately: on `psf/requests` a renamed variable was reported as a
 deletion, which turned out to be a real bug in both implementations — value names and attribute
 names were numbered in one namespace, so renaming variables (which leaves attributes spelled as

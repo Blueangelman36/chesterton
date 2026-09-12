@@ -200,6 +200,9 @@ def cmd_add(args) -> int:
     root = repo_root()
     path, start, end = _parse_loc(args.loc, root)
     index, target = _pick(root, path, start, end)
+    store = Store(root)
+    if not args.also:
+        _refuse_duplicate(store, index, target, path)
     reason, source = args.message, args.source
     if args.from_blame:
         sha, message = blame(root, path, start)
@@ -208,8 +211,8 @@ def cmd_add(args) -> int:
     if not reason or not reason.strip():
         raise FenceError('say why with -m "...", or use --from-blame to borrow the message '
                          "of the commit that wrote the line")
-    note = Store(root).create(reason.strip(), source, _author(root), target.snippet,
-                              _anchor(index, target))
+    note = store.create(reason.strip(), source, _author(root), target.snippet,
+                        _anchor(index, target))
     _stage(root)
     print(f"fence: added {note['id']}  {path}:{target.line}  in {A.scope_label(target.scope)}")
     print(f"    {_first_line(target.snippet)}")
@@ -364,6 +367,26 @@ def _hints(counts: Counter, staged: bool) -> list[str]:
     if counts["renamed"] or counts["moved"]:
         hints.append("follow code that moved:      fence update")
     return hints
+
+
+def _refuse_duplicate(store: Store, index: A.Index, target: A.Candidate, path: str) -> None:
+    """Two notes on one statement is nearly always a re-run, and occasionally meant.
+
+    Compares where notes are *now*, not where they were recorded, so a note whose
+    code has since moved onto this statement counts as the same one.
+    """
+    nearby = [n for n in store.notes()
+              if n["anchor"]["path"] == target.path or n["anchor"]["exact"] == target.exact]
+    here = []
+    for note in nearby:
+        found = A.locate(note["anchor"], index).candidate
+        if found and (found.path, found.line, found.exact) == (target.path, target.line, target.exact):
+            here.append(note)
+    if not here:
+        return
+    listed = "\n  ".join(f"{n['id']}  {_first_line(n['reason'])}" for n in here)
+    raise FenceError(f"{path}:{target.line} already has a reason recorded:\n  {listed}\n"
+                     "  --also records a second, independent reason for the same code")
 
 
 def _as_json(note: dict, match: A.Match) -> dict:
@@ -534,6 +557,8 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--from-blame", action="store_true",
                    help="borrow the message of the commit that wrote the line")
     s.add_argument("--source", help="where the reason came from (URL, ticket, commit)")
+    s.add_argument("--also", action="store_true",
+                   help="record another reason for a statement that already has one")
     s.set_defaults(run=cmd_add)
 
     s = sub.add_parser("list", help="list notes, optionally under a path")

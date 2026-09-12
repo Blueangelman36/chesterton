@@ -106,6 +106,25 @@ class CliTest(unittest.TestCase):
         self.assertEqual(note["reason"], FIRST_COMMIT)
         self.assertTrue(note["source"].startswith("commit "))
 
+    def test_a_second_note_on_the_same_statement_is_refused(self):
+        guard = f"app.py:{line_of(BASE, 'if resp.json()')}"
+        code, out = self.fence("add", guard, "-m", "the same statement again")
+        self.assertEqual(code, 2)
+        self.assertIn(self.note["id"], out)
+        self.assertIn("--also", out)
+        self.assertEqual(len(Store(self.repo).notes()), 1)
+
+    def test_also_records_a_second_independent_reason(self):
+        guard = f"app.py:{line_of(BASE, 'if resp.json()')}"
+        code, out = self.fence("add", guard, "--also", "-m", "the proxy rewrites 401 to 200 too")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(Store(self.repo).notes()), 2)
+
+    def test_another_statement_in_the_same_file_is_fine(self):
+        code, out = self.fence("add", f"app.py:{line_of(BASE, 'time.sleep')}", "-m", "keep the delay")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(Store(self.repo).notes()), 2)
+
     def test_why_gives_the_reason_recorded_for_a_file(self):
         code, out = self.fence("why", "app.py")
         self.assertEqual(code, 0, out)

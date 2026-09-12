@@ -4,3 +4,7 @@
 //! remains the reference; both are held to `../conformance/cases`.
 
 pub mod anchor;
+pub mod cli;
+pub mod git;
+pub mod store;
+pub mod text;

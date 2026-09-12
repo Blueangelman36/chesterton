@@ -75,7 +75,13 @@ enum Key {
     Shape,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Where an implementation gets files from: the worktree, the index, or a test.
+pub trait Source {
+    fn read(&self, path: &str) -> Option<String>;
+    fn paths(&self) -> Vec<String>;
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Dupes {
     pub exact: usize,
     pub shape: usize,
@@ -108,7 +114,7 @@ impl Dupes {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Anchor {
     pub version: u32,
     pub path: String,
@@ -172,6 +178,24 @@ impl Index {
         Index { files, broken }
     }
 
+    /// Every file a source can see. Parsing is fast enough here that the Python
+    /// implementation's content cache has no counterpart yet.
+    pub fn scan(source: &dyn Source) -> Self {
+        Index::scan_paths(source, &source.paths())
+    }
+
+    pub fn scan_paths(source: &dyn Source, paths: &[String]) -> Self {
+        let mut sources = BTreeMap::new();
+        for path in paths {
+            if path.ends_with(".py") {
+                if let Some(text) = source.read(path) {
+                    sources.insert(path.clone(), text);
+                }
+            }
+        }
+        Index::from_sources(&sources)
+    }
+
     pub fn get(&self, path: &str) -> &[Candidate] {
         self.files.get(path).map(Vec::as_slice).unwrap_or(&[])
     }
@@ -183,6 +207,20 @@ impl Index {
             .flat_map(|(_, found)| found.iter())
             .collect()
     }
+}
+
+/// The smallest statement covering the lines; the outermost one on a tie.
+pub fn pick(cands: &[Candidate], start: usize, end: usize) -> Option<&Candidate> {
+    cands
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.line <= start && c.end_line >= end)
+        .min_by_key(|(position, c)| (c.end_line - c.line, *position))
+        .map(|(_, c)| c)
+}
+
+pub fn scope_label(scope: &str) -> &str {
+    if scope.is_empty() { "<module>" } else { scope }
 }
 
 pub fn parse(source: &str) -> Option<Tree> {
@@ -528,7 +566,7 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
 
 /// FNV-1a. Fingerprints only ever get compared with others from this same
 /// implementation, so a short non-cryptographic digest is enough.
-fn hash(text: &str) -> String {
+pub(crate) fn hash(text: &str) -> String {
     let mut value: u64 = 0xcbf29ce484222325;
     for byte in text.as_bytes() {
         value ^= *byte as u64;

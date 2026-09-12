@@ -13,6 +13,8 @@ struct Case {
     name: String,
     expect: String,
     anchor_match: String,
+    /// Which language the case is written in; implementations run what they read.
+    language: Option<String>,
     expect_file: Option<String>,
     expect_scope: Option<String>,
     before: BTreeMap<String, String>,
@@ -67,6 +69,19 @@ fn anchor_for(case: &Case) -> anchor::Anchor {
 fn every_case() {
     let cases = load();
     assert!(!cases.is_empty(), "no conformance cases found in {:?}", cases_dir());
+
+    // Printed so a passing run still says what it covered: a case that silently
+    // stopped running looks exactly like a case that passes.
+    let mut per_language: BTreeMap<String, usize> = BTreeMap::new();
+    for (_, case) in &cases {
+        let language = case.language.clone().unwrap_or_else(|| "python".to_string());
+        *per_language.entry(language).or_insert(0) += 1;
+    }
+    let covered: Vec<String> = per_language
+        .iter()
+        .map(|(language, count)| format!("{language}={count}"))
+        .collect();
+    println!("conformance: {} cases ({})", cases.len(), covered.join(", "));
 
     let mut failures = Vec::new();
     for (group, case) in &cases {

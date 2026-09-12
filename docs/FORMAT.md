@@ -151,6 +151,7 @@ to the note's code than a lookalike that was already there, the code is gone.
 [[case]]
 name = "the statement was deleted"
 expect = "removed"          # the verdict
+language = "python"         # optional, defaults to python; runners skip what they can't read
 anchor_match = "if resp"    # anchor the statement whose first line contains this
 expect_file = "auth.py"     # optional, for `moved`
 expect_scope = "_check"     # optional, for `moved`

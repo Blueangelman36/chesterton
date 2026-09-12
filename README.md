@@ -200,8 +200,11 @@ to hash identically before and after, so existing notes keep working.
 
 This is a prototype of the core loop: anchoring plus the hook.
 
-- **Python only.** It uses the standard library `ast` and `tokenize` modules. Nothing in the design
-  is Python-specific; tree-sitter would bring the same anchoring to other languages.
+- **The reference implementation reads Python only**, using the standard library `ast` and
+  `tokenize` modules — which is why it installs with no dependencies at all. The Rust
+  implementation also reads TypeScript, TSX and JavaScript, and everything language-specific there
+  is four questions in one place: what holds statements, what introduces a scope, which names are
+  attributes rather than values, and what counts as a leaf. Another language is answering those.
 - **Heavily edited short statements** can read as `removed` rather than `changed`. It errs toward
   speaking up; `fence reanchor` fixes it.
 - **Notes on large blocks are large**, because the anchor stores the block's token list. A note is
@@ -244,7 +247,7 @@ This is a prototype of the core loop: anchoring plus the hook.
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
-| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, no parse cache yet |
+| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python and TypeScript, no parse cache yet |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
 

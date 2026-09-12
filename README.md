@@ -132,6 +132,29 @@ standard library, with 40 notes: every note was still found after all 287 files 
 from their ASTs, 40/40 deletions were caught, 16/16 literal edits were flagged, and there were
 0 surprising verdicts.
 
+**Public projects.** The harnesses take any git repository, so the same refactors were applied to
+four well-known ones. 3,613 Python files in total:
+
+| Project | Python files | Surprising verdicts |
+| --- | --- | --- |
+| psf/requests | 37 | 0 |
+| pallets/flask | 83 | 0 |
+| pytest-dev/pytest | 274 | 0 |
+| django/django | 2,932 | 0 |
+| Python 3.14 standard library slice | 287 | 0 |
+
+That run earned its keep immediately: on `psf/requests` a renamed variable was reported as a
+deletion, which turned out to be a real bug in both implementations — value names and attribute
+names were numbered in one namespace, so renaming variables (which leaves attributes spelled as
+they were) shifted every attribute and broke the match. Two lines of pygments style table found
+what a hand-written test would not have thought to try. The fix and its conformance case are in
+the suite; the schemes it retired are recorded in `docs/FORMAT.md`.
+
+It also made one limitation concrete: a short, generic statement moved to another file reads as
+`removed`, not `moved`. `from django.urls import set_script_prefix` looks the same everywhere, so
+following it across files would be guessing. Fence errs toward speaking up, and `fence reanchor`
+settles it.
+
 **Speed.** That corpus was also slow enough to be worth profiling, which said something useful:
 parsing is everything, and locating is free.
 

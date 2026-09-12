@@ -229,10 +229,11 @@ This is a prototype of the core loop: anchoring plus the hook.
    sentences that explain why code exists, and propose them as notes with a link to the source.
    Nobody writes documentation voluntarily, so the tool should do the writing and ask only for a
    yes or no.
-2. **Finish the Rust implementation.** Its anchoring passes the shared conformance cases; the note
-   store, git plumbing and hook are not written yet, so `python/` is still the working command.
-   A single binary matters because a hook that needs the right Python environment in every clone
-   is an adoption tax.
+2. **One implementation per repository, until they can share notes.** Both are usable now, but
+   their fingerprints are deliberately different bytes, so notes written by one read as `changed`
+   to the other until `fence update` re-pins them — and then they read as `changed` to the first.
+   A repository should record which implementation it expects, and the other should say so plainly
+   instead of quietly re-pinning everything. That is the next thing to fix.
 3. **Other languages.** The Rust side already parses with tree-sitter, so a new language is
    mostly a grammar plus its statement and scope rules — and a set of conformance cases.
 4. **Make it fast on large repositories**, per Status above.
@@ -243,7 +244,7 @@ This is a prototype of the core loop: anchoring plus the hook.
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
-| `rust/` | Second implementation, on tree-sitter. Anchoring only so far — no note store, git plumbing or hook |
+| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, no parse cache yet |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
 

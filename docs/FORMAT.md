@@ -96,6 +96,12 @@ is ordinary in generated or table-driven code — every attribute's number shift
 and an ordinary rename read as a deletion. The conformance suite now carries that
 case; it was found by running the stress harness over a real project.
 
+**Two implementations should not share one repository yet.** Each writes its own
+version, and each treats the other's anchors as fingerprint-less — so a note
+written by one reads as `changed` to the other, and `fence update` re-pins it,
+which makes it read as `changed` to the first. Until a note can carry more than
+one scheme, or a repository can declare which implementation it expects, pick one.
+
 `version` exists because `exact`, `shape` and `tokens` are **implementation-defined**.
 A tree-sitter implementation will hash the same code differently from a Python
 `ast` one, and that is fine. An implementation that meets an anchor whose

@@ -185,8 +185,16 @@ This is a prototype of the core loop: anchoring plus the hook.
   is Python-specific; tree-sitter would bring the same anchoring to other languages.
 - **Heavily edited short statements** can read as `removed` rather than `changed`. It errs toward
   speaking up; `fence reanchor` fixes it.
-- **Notes on large blocks are large**, because the anchor stores the block's token list. A
-  MinHash signature would give them a fixed size.
+- **Notes on large blocks are large**, because the anchor stores the block's token list. A note is
+  about 650 bytes typically and 4.2 KB for a 348-token statement, so a hundred notes cost the
+  repository under 100 KB — but the token list is also what makes a note's diff unreadable. A
+  fixed-size signature (MinHash) would fix both.
+- **The cache does not scale past a few thousand files.** It costs 3–6 KB per Python file —
+  199 KB for requests, 8.9 MB for django's 2,932 files — and the whole thing is one JSON document
+  loaded and rewritten per command. At ten thousand files that is tens of megabytes of parsing per
+  invocation, and the right answer becomes SQLite, where a single file's row can be read and
+  replaced without touching the rest. Django is the largest thing measured; beyond that, assume
+  nothing.
 - **The first command on a large repository is slow.** Knowing how many copies of a statement live
   elsewhere means looking at every file, and the first look has to parse them all. On django's
   2,932 files `fence add` takes 30s the first time and 1.6s afterwards, and `fence check` 0.3s,

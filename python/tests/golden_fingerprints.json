@@ -1,0 +1,150 @@
+{
+  "1:Expr.Constant:<module>": [
+    "594f5cf3a2eb91b2",
+    "594f5cf3a2eb91b2"
+  ],
+  "3:Import:<module>": [
+    "9bfcbba977ea3460",
+    "9bfcbba977ea3460"
+  ],
+  "4:ImportFrom:<module>": [
+    "b243a2960f63233d",
+    "b243a2960f63233d"
+  ],
+  "6:Assign:<module>": [
+    "de579d9e06392bfe",
+    "d09fe5c7a27c516c"
+  ],
+  "9:ClassDef:<module>": [
+    "3ed8ec271f294b63",
+    "b073d9a713c7f6c1"
+  ],
+  "11:Expr.Constant:Client": [
+    "d33694e44e224179",
+    "d33694e44e224179"
+  ],
+  "13:AnnAssign:Client": [
+    "8defae5e787c92aa",
+    "229d42c8dc7639e2"
+  ],
+  "15:FunctionDef:Client": [
+    "7f2e13a8485b2418",
+    "cc1bd3f10c7ebc04"
+  ],
+  "16:Assign:Client.__init__": [
+    "7c165e01ccf335ca",
+    "eac118541f04e1df"
+  ],
+  "17:Assign:Client.__init__": [
+    "4c3cdae8d862370c",
+    "b60791920fc18bc3"
+  ],
+  "19:AsyncFunctionDef:Client": [
+    "0be4b1fdb85248b9",
+    "ac6f85e4d798357c"
+  ],
+  "20:AsyncWith:Client.fetch": [
+    "c462132a00ff4865",
+    "bc11fe63ac24f377"
+  ],
+  "21:If:Client.fetch": [
+    "ee69b33ba419eae9",
+    "1522aef73ac7d4a4"
+  ],
+  "22:Raise:Client.fetch": [
+    "9b5e801fec45b1c0",
+    "316d5de80f5ae30b"
+  ],
+  "23:Return:Client.fetch": [
+    "0918b5a2c9014bc6",
+    "0af3662b0dcfff83"
+  ],
+  "25:FunctionDef:Client": [
+    "c773d06746b67fa8",
+    "f63d11d301897e8e"
+  ],
+  "26:Match:Client.classify": [
+    "b8f9f494e35c4ed5",
+    "1eb9c7ed72a3df95"
+  ],
+  "28:Return:Client.classify": [
+    "b5cf0d90b32d1db4",
+    "b5cf0d90b32d1db4"
+  ],
+  "30:Return:Client.classify": [
+    "98695c7ab5f9e0c3",
+    "50c8073bef5768cb"
+  ],
+  "32:Return:Client.classify": [
+    "8b62a3cf7eef6c3a",
+    "8b62a3cf7eef6c3a"
+  ],
+  "35:FunctionDef:<module>": [
+    "7fa39cff07eed7c3",
+    "7033eec6ed8439b9"
+  ],
+  "36:Assign:retry": [
+    "04e253672356ca43",
+    "74bee2930b135e65"
+  ],
+  "37:While:retry": [
+    "219e1e8f265843e7",
+    "240a81aa1c3ce19f"
+  ],
+  "38:TryStar:retry": [
+    "bbaf90ba3bf878d5",
+    "db32b18691d49296"
+  ],
+  "39:Expr.Call:retry": [
+    "4d141755f09bf761",
+    "119d69c43df19feb"
+  ],
+  "41:Continue:retry": [
+    "9228f3ba0f31d8e2",
+    "9228f3ba0f31d8e2"
+  ],
+  "43:Delete:retry": [
+    "0d96ec4d33e3ad8b",
+    "09fd53b63c98405d"
+  ],
+  "45:Pass:retry": [
+    "e6d89745d4993984",
+    "e6d89745d4993984"
+  ],
+  "46:Assign:retry": [
+    "fee5ac88278eee10",
+    "77043ae238e7036e"
+  ],
+  "47:Global:retry": [
+    "a80796ca8d5eabcc",
+    "a80796ca8d5eabcc"
+  ],
+  "48:Return:retry": [
+    "544e5ca9fb77aeff",
+    "4c66bbcc625d52fd"
+  ],
+  "51:FunctionDef:<module>": [
+    "5cdb487ba591c632",
+    "e6361e780e485a84"
+  ],
+  "52:Try:focus": [
+    "6b21f86f41723939",
+    "436c138b5013223d"
+  ],
+  "53:Expr.Call:focus": [
+    "4d141755f09bf761",
+    "119d69c43df19feb"
+  ],
+  "55:Raise:focus": [
+    "701740b90911ee0f",
+    "2541535a33986df9"
+  ],
+  "57:Expr.Call:focus": [
+    "d0141c64cfd4c040",
+    "d2971e3c6d19fae3"
+  ],
+  "59:Expr.Call:focus": [
+    "744a249f8b8db182",
+    "d2971e3c6d19fae3"
+  ]
+}

@@ -106,6 +106,14 @@ class CliTest(unittest.TestCase):
         self.assertEqual(note["reason"], FIRST_COMMIT)
         self.assertTrue(note["source"].startswith("commit "))
 
+    def test_init_leaves_an_explanation_for_whoever_finds_the_directory(self):
+        readme = self.repo / ".fence" / "README.md"
+        self.assertTrue(readme.is_file())
+        text = readme.read_text(encoding="utf-8")
+        self.assertIn("fence retire", text)
+        self.assertIn("git does not clone", text)
+        self.assertIn(".fence/README.md", git(self.repo, "ls-files").stdout)
+
     def test_the_parse_cache_is_written_and_stays_out_of_the_commit(self):
         code, out = self.fence("add", f"app.py:{line_of(BASE, 'time.sleep')}",
                                "-m", "Safari fires focus twice without it")

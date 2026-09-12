@@ -10,13 +10,20 @@ on:
 
 jobs:
   python:
-    name: python (reference)
+    # Every supported version, because a note written under one interpreter is
+    # checked under another. The golden fingerprints in tests/ are what would
+    # catch `ast` changing shape between versions and taking every note with it.
+    name: python ${{ matrix.python }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       - name: Unit, end-to-end and conformance tests
         run: python -m unittest -v
         working-directory: python

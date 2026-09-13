@@ -94,7 +94,8 @@ class Suggestion:
     def command(self) -> str:
         where = f"{self.path}:{self.line}"
         if self.draft:
-            return f'fence add {where} -m "{self.draft}"'
+            # A quote inside the draft would end the argument early.
+            return f'fence add {where} -m "{self.draft.replace(chr(34), chr(39))}"'
         return f"fence add {where} --from-blame"
 
 

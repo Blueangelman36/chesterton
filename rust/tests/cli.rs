@@ -165,6 +165,22 @@ fn retiring_the_reason_unblocks_the_commit() {
 }
 
 #[test]
+fn suggest_finds_a_typescript_statement_worth_recording() {
+    let repo = Repo::new("suggest");
+    repo.write(
+        "widget.ts",
+        "export function focus(el: HTMLElement): void {\n  \
+         // Safari fires focus twice within 50ms, so the first one is swallowed deliberately.\n  \
+         setTimeout(() => el.focus(), 50);\n}\n",
+    );
+    let (code, out) = repo.fence(&["suggest", "--json"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("widget.ts"), "{out}");
+    assert!(out.contains("Safari"), "{out}");
+    assert!(out.contains("setTimeout"), "{out}");
+}
+
+#[test]
 fn statements_lists_what_a_note_could_be_pinned_to() {
     let repo = Repo::new("statements");
     let (code, out) = repo.fence(&["statements", "app.py", "--json"]);

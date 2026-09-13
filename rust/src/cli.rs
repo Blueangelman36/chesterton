@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
-use crate::anchor::{self, Candidate, How, Index, Match};
+use crate::anchor::{self, Candidate, How, Index, Lang, Match};
 use crate::git::{self, Error, Staged, Worktree};
 use crate::store::{self, Note, Store};
+use crate::suggest;
 use crate::text;
 
 const HOOK_MARKER: &str = "# installed by fence";
@@ -45,6 +46,7 @@ fn run(argv: &[String]) -> Result<i32, Error> {
         "why" => cmd_why(&args),
         "add" => cmd_add(&args),
         "list" => cmd_list(&args),
+        "suggest" => cmd_suggest(&args),
         "statements" => cmd_statements(&args),
         "check" => cmd_check(&args),
         "update" => cmd_update(&args),
@@ -76,6 +78,7 @@ impl Args {
             let takes_value = match item {
                 "-m" | "--message" => Some("message"),
                 "--source" => Some("source"),
+                "--limit" => Some("limit"),
                 _ => None,
             };
             if let Some(key) = takes_value {
@@ -291,6 +294,79 @@ fn cmd_list(args: &Args) -> Result<i32, Error> {
         if let Some(source) = &note.source {
             println!("    from: {source}");
         }
+    }
+    Ok(0)
+}
+
+/// What to record, for a repository that has recorded nothing yet.
+fn cmd_suggest(args: &Args) -> Result<i32, Error> {
+    let root = git::repo_root()?;
+    let worktree = Worktree { root: root.clone() };
+    let index = Index::scan(&worktree);
+
+    let mut taken = Vec::new();
+    for note in Store::new(&root).notes()? {
+        if let Some(found) = anchor::locate(&note.anchor, &index).candidate {
+            taken.push((found.path, found.line));
+        }
+    }
+
+    let mut paths: Vec<String> = anchor::Source::paths(&worktree)
+        .into_iter()
+        .filter(|path| Lang::of(path).is_some())
+        .collect();
+    if let Some(under_here) = args.at(0) {
+        let prefix = repo_path(under_here, &root)?;
+        paths.retain(|path| under(path, &prefix));
+    }
+    paths.sort();
+
+    let limit: usize = args.value("limit").and_then(|v| v.parse().ok()).unwrap_or(20);
+    let found = suggest::collect(&index, &paths, &taken, limit, |path| {
+        anchor::Source::read(&worktree, path)
+    });
+
+    if args.has("json") {
+        let items: Vec<serde_json::Value> = found
+            .iter()
+            .map(|item| {
+                json!({
+                    "path": item.path,
+                    "line": item.line,
+                    "end_line": item.end_line,
+                    "kind": item.kind,
+                    "scope": item.scope,
+                    "text": item.text,
+                    "score": item.score,
+                    "reasons": item.reasons,
+                    "draft": item.draft,
+                    "command": item.command(),
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({ "suggestions": items })).unwrap_or_default()
+        );
+        return Ok(0);
+    }
+    if found.is_empty() {
+        println!("fence: nothing stood out. That is not the same as nothing being worth recording.");
+        return Ok(0);
+    }
+    println!(
+        "fence: {} statement(s) whose reason may not be written down, worst first.",
+        found.len()
+    );
+    println!("The draft reason is somewhere to start, not something to accept.\n");
+    for item in &found {
+        println!("  {}:{}  in {}", item.path, item.line, item.scope);
+        println!("      {}", item.text);
+        let reasons = if args.has("why") { &item.reasons[..] } else { &item.reasons[..1.min(item.reasons.len())] };
+        for reason in reasons {
+            println!("      {reason}");
+        }
+        println!("      {}\n", item.command());
     }
     Ok(0)
 }

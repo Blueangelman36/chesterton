@@ -7,4 +7,5 @@ pub mod anchor;
 pub mod cli;
 pub mod git;
 pub mod store;
+pub mod suggest;
 pub mod text;

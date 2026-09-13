@@ -313,7 +313,26 @@ impl Index {
     /// Every file a source can see. Parsing is fast enough here that the Python
     /// implementation's content cache has no counterpart yet.
     pub fn scan(source: &dyn Source) -> Self {
-        Index::scan_paths(source, &source.paths())
+        Index::scan_with(source, &[])
+    }
+
+    /// Every file worth reading, plus any named path regardless.
+    ///
+    /// A note can live wherever somebody put it, so a path asked for by name is
+    /// always read. Discovery is choosier: see `worth_reading`.
+    pub fn scan_with(source: &dyn Source, always: &[String]) -> Self {
+        let mut sources = BTreeMap::new();
+        for path in source.paths() {
+            if Lang::of(&path).is_none() {
+                continue;
+            }
+            if let Some(text) = source.read(&path) {
+                if always.contains(&path) || worth_reading(&path, &text) {
+                    sources.insert(path, text);
+                }
+            }
+        }
+        Index::from_sources(&sources)
     }
 
     pub fn scan_paths(source: &dyn Source, paths: &[String]) -> Self {
@@ -339,6 +358,24 @@ impl Index {
             .flat_map(|(_, found)| found.iter())
             .collect()
     }
+}
+
+/// Vendored and generated code is not where reasons live, and a minified bundle
+/// is one statement a megabyte wide: parsing it costs seconds and teaches nothing.
+///
+/// Measured on django, where the admin's vendored jQuery was most of the time
+/// spent on `check` and the best thing `suggest` could find.
+pub fn worth_reading(path: &str, source: &str) -> bool {
+    const GENERATED: &[&str] = &[
+        "/vendor/", "/vendored/", "/node_modules/", "/dist/", "/build/", "/third_party/",
+        "/site-packages/", "/.venv/", "/migrations/", ".min.js", ".min.css", ".bundle.js",
+        "-min.js", ".generated.", "_pb2.py",
+    ];
+    let lower = format!("/{}", path.to_ascii_lowercase());
+    if GENERATED.iter().any(|part| lower.contains(part)) {
+        return false;
+    }
+    !source.lines().any(|line| line.len() > 2000)
 }
 
 /// The smallest statement covering the lines; the outermost one on a tie.
@@ -723,6 +760,19 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
 
 /// FNV-1a. Fingerprints only ever get compared with others from this same
 /// implementation, so a short non-cryptographic digest is enough.
+#[cfg(test)]
+mod tests {
+    use super::worth_reading;
+
+    #[test]
+    fn vendored_and_minified_files_are_not_where_reasons_live() {
+        assert!(!worth_reading("static/vendor/jquery/jquery.min.js", "x=1\n"));
+        assert!(!worth_reading("node_modules/x/index.js", "x=1\n"));
+        assert!(!worth_reading("app/bundle.js", &"var x=1;".repeat(400)));
+        assert!(worth_reading("src/client.ts", "export const x = 1;\n"));
+    }
+}
+
 pub(crate) fn hash(text: &str) -> String {
     let mut value: u64 = 0xcbf29ce484222325;
     for byte in text.as_bytes() {

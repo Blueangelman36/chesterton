@@ -247,11 +247,13 @@ class Index:
         return self._tallied
 
     def _counts_for(self, path: str) -> tuple[Counter, Counter] | None:
-        if self.cache is None:
-            return _count(self.get(path))  # no point reading bytes nothing will check
+        # Read even without a cache to ask whether the file is worth parsing:
+        # reading bytes is cheap next to parsing a minified bundle.
         source = self.reader.read(path)
-        if source is None:
+        if source is None or not worth_reading(path, source):
             return None
+        if self.cache is None:
+            return _count(self.get(path))
         known = self.cache.get(path, source)
         if known is not None:
             return known
@@ -353,6 +355,22 @@ def features(tokens: list[str]) -> set:
 def similarity(a: set, b: set) -> float:
     union = a | b
     return len(a & b) / len(union) if union else 1.0
+
+
+GENERATED = ("/vendor/", "/vendored/", "/node_modules/", "/dist/", "/build/", "/third_party/",
+             "/site-packages/", "/.venv/", "/migrations/", ".min.js", ".min.css", ".generated.",
+             "_pb2.py")
+
+
+def worth_reading(path: str, source: str) -> bool:
+    """Vendored and generated code is not where reasons live, and a minified
+    bundle is one statement a megabyte wide: parsing it costs seconds and
+    teaches nothing. Measured on django, where vendored jQuery was most of the
+    time spent and the best thing `suggest` could find."""
+    lower = f"/{path.lower()}"
+    if any(part in lower for part in GENERATED):
+        return False
+    return not any(len(line) > 2000 for line in source.split("\n"))
 
 
 def _count(found: list[Candidate]) -> tuple[Counter, Counter]:

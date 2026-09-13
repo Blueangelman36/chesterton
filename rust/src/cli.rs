@@ -449,7 +449,9 @@ fn cmd_check(args: &Args) -> Result<i32, Error> {
         }
         first_pass
     } else {
-        let index = Index::scan(&Worktree { root: root.clone() });
+        // A note can live in a file discovery would skip, so its path is read anyway.
+        let noted: Vec<String> = notes.iter().map(|note| note.anchor.path.clone()).collect();
+        let index = Index::scan_with(&Worktree { root: root.clone() }, &noted);
         notes
             .into_iter()
             .map(|note| {

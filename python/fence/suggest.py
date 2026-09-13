@@ -104,6 +104,11 @@ class Suggestion:
 STRINGS = re.compile(r"('''|\"\"\")[\s\S]*?\1|\"[^\"\n]*\"|'[^'\n]*'")
 
 
+def _shorten(text: str, width: int = 120) -> str:
+    """One line of a statement, at a length a person can read."""
+    return text if len(text) <= width else text[:width] + "…"
+
+
 def own_text(candidate: A.Candidate, siblings: list[A.Candidate], lines: list[str]) -> str:
     """A statement's own lines, minus anything nested inside it, minus string bodies.
 
@@ -165,7 +170,7 @@ def rank(candidate: A.Candidate, body: str, comment: str, copies_elsewhere: int,
         end_line=candidate.end_line,
         kind=candidate.kind,
         scope=A.scope_label(candidate.scope),
-        text=candidate.snippet.strip().splitlines()[0] if candidate.snippet.strip() else "",
+        text=_shorten(candidate.snippet.strip().splitlines()[0] if candidate.snippet.strip() else ""),
     )
 
     if comment and EXPLAINS.search(comment):

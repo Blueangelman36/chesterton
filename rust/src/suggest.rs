@@ -63,6 +63,15 @@ impl Suggestion {
     }
 }
 
+/// One line of a statement, at a length a person can read.
+fn shorten(text: &str) -> String {
+    let mut out: String = text.chars().take(120).collect();
+    if text.chars().count() > 120 {
+        out.push('…');
+    }
+    out
+}
+
 fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
@@ -275,7 +284,7 @@ pub fn rank(
         end_line: candidate.end_line,
         kind: candidate.kind.clone(),
         scope: anchor::scope_label(&candidate.scope).to_string(),
-        text: candidate.snippet.lines().next().unwrap_or("").trim().to_string(),
+        text: shorten(candidate.snippet.lines().next().unwrap_or("").trim()),
         score: 0,
         reasons: Vec::new(),
         draft: None,

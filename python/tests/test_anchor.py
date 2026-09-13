@@ -141,6 +141,22 @@ class RelocateTest(unittest.TestCase):
         self.assertIsNone(m.candidate)
 
 
+class WorthReadingTest(unittest.TestCase):
+    """Found on django: vendored jQuery was most of the time spent, and the best
+    thing suggest could find."""
+
+    def test_vendored_and_generated_paths_are_skipped(self):
+        for path in ("static/vendor/jquery/jquery.min.js", "node_modules/x/index.js",
+                     "app/migrations/0001_initial.py", "api/schema_pb2.py"):
+            self.assertFalse(A.worth_reading(path, "x = 1\n"), path)
+
+    def test_a_minified_file_is_skipped_wherever_it_lives(self):
+        self.assertFalse(A.worth_reading("app/bundle.js", "var x=1;" * 400))
+
+    def test_ordinary_code_is_read(self):
+        self.assertTrue(A.worth_reading("src/client.py", BASE))
+
+
 class LookalikeTest(unittest.TestCase):
     """Short, generic statements must not be 'found' in some other lookalike."""
 

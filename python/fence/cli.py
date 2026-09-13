@@ -263,7 +263,9 @@ def cmd_suggest(args) -> int:
         if found:
             taken.add((found.path, found.line, found.end_line))
 
-    paths = [p for p in WorktreeReader(root).paths() if p.endswith(".py")]
+    reader = WorktreeReader(root)
+    paths = [p for p in reader.paths() if p.endswith(".py")
+             and A.worth_reading(p, reader.read(p) or "")]
     if args.path:
         prefix = _repo_path(args.path, root)
         paths = [p for p in paths if _under(p, prefix)]

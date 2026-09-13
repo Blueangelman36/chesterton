@@ -311,6 +311,11 @@ surprises you: the hook runs the code in `python/fence/`, which is the code you 
 edit that breaks the tool blocks the commit with an internal error rather than a verdict.
 `git commit --no-verify` is the way through while the tool is mid-surgery.
 
+Running from source rather than an installed package also puts an absolute `PYTHONPATH` in the
+hook, so **moving or re-cloning the repository makes every commit fail** with an import error
+instead of a verdict. `fence init` again rewrites the hook and fixes it. An installed fence writes
+a hook with no path in it and does not have this problem.
+
 Exit codes: `0` nothing to say, `1` something is blocking, `2` the command was used wrong,
 `3` a bug in fence (with `FENCE_DEBUG=1` for the traceback).
 

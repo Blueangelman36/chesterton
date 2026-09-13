@@ -30,7 +30,7 @@ pub struct Note {
     pub anchor: Anchor,
     /// Notes written before a note could carry more than one scheme.
     #[serde(default, rename = "anchor", skip_serializing)]
-    legacy: Option<Anchor>,
+    pub(crate) legacy: Option<Anchor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retired: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -125,6 +125,14 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(len(Store(self.repo).notes()), 2)
 
+    def test_statements_lists_what_a_note_could_be_pinned_to(self):
+        payload = json.loads(self.fence("statements", "app.py", "--json")[1])
+        self.assertEqual(payload["path"], "app.py")
+        guard = next(s for s in payload["statements"] if s["line"] == line_of(BASE, "if resp.json()"))
+        self.assertEqual((guard["kind"], guard["scope"]), ("If", "Client.fetch"))
+        self.assertGreater(guard["tokens"], 12)
+        self.assertTrue(guard["exact"])
+
     def test_why_gives_the_reason_recorded_for_a_file(self):
         code, out = self.fence("why", "app.py")
         self.assertEqual(code, 0, out)

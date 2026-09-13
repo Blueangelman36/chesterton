@@ -110,6 +110,7 @@ remember why code exists, and speak up before it's removed.
   add FILE:LINE[-END] -m "why"        record why a statement exists
       [--from-blame] [--source S] [--also]
   list [PATH]                         list notes, optionally under a path
+  statements FILE [--json]            every statement a note could be pinned to
   check [--staged] [--json]           find each note's code and report what happened
   update                              re-pin notes whose code was renamed or moved
   confirm ID                          the code changed, but the reason still holds

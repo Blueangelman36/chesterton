@@ -165,6 +165,16 @@ fn retiring_the_reason_unblocks_the_commit() {
 }
 
 #[test]
+fn statements_lists_what_a_note_could_be_pinned_to() {
+    let repo = Repo::new("statements");
+    let (code, out) = repo.fence(&["statements", "app.py", "--json"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("\"kind\": \"if_statement\""), "{out}");
+    assert!(out.contains("\"scope\": \"Client.fetch\""), "{out}");
+    assert!(out.contains("\"exact\""), "{out}");
+}
+
+#[test]
 fn a_rename_is_followed_rather_than_reported() {
     let repo = Repo::new("rename");
     record(&repo);

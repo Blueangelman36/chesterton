@@ -238,6 +238,30 @@ def cmd_list(args) -> int:
     return 0
 
 
+def cmd_statements(args) -> int:
+    """Every statement a note could be pinned to, for tools rather than people.
+
+    This is what lets a test harness work on a language it cannot parse itself:
+    ask the command where the statements are, then edit by line.
+    """
+    root = repo_root()
+    path = _repo_path(args.path, root)
+    source = WorktreeReader(root).read(path)
+    if source is None:
+        raise FenceError(f"{path}: no such file")
+    found = A.candidates(path, source)
+    if args.json:
+        print(json.dumps({"path": path, "statements": [
+            {"line": c.line, "end_line": c.end_line, "kind": c.kind,
+             "scope": A.scope_label(c.scope), "tokens": len(c.tokens),
+             "exact": c.exact, "shape": c.shape, "text": _first_line(c.snippet)}
+            for c in found]}, indent=2))
+        return 0
+    for c in found:
+        print(f"{c.line}:{c.end_line}  {c.kind}  in {A.scope_label(c.scope)}  ({len(c.tokens)} tokens)")
+    return 0
+
+
 def cmd_check(args) -> int:
     root = repo_root()
     notes = Store(root).notes()
@@ -570,6 +594,11 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("list", help="list notes, optionally under a path")
     s.add_argument("path", nargs="?")
     s.set_defaults(run=cmd_list)
+
+    s = sub.add_parser("statements", help="every statement a note could be pinned to, for tooling")
+    s.add_argument("path")
+    s.add_argument("--json", action="store_true", help="machine-readable output")
+    s.set_defaults(run=cmd_statements)
 
     s = sub.add_parser("check", help="find each note's code and report what happened to it")
     s.add_argument("--staged", action="store_true",

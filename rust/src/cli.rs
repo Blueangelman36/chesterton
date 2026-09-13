@@ -37,6 +37,7 @@ fn run(argv: &[String]) -> Result<i32, Error> {
         "why" => cmd_why(&args),
         "add" => cmd_add(&args),
         "list" => cmd_list(&args),
+        "statements" => cmd_statements(&args),
         "check" => cmd_check(&args),
         "update" => cmd_update(&args),
         "confirm" => cmd_confirm(&args),
@@ -282,6 +283,52 @@ fn cmd_list(args: &Args) -> Result<i32, Error> {
         if let Some(source) = &note.source {
             println!("    from: {source}");
         }
+    }
+    Ok(0)
+}
+
+/// Every statement a note could be pinned to, for tools rather than people.
+///
+/// This is what lets a test harness work on a language it cannot parse itself:
+/// ask the binary where the statements are, then edit by line.
+fn cmd_statements(args: &Args) -> Result<i32, Error> {
+    let root = git::repo_root()?;
+    let path = repo_path(args.required(0, "<file>")?, &root)?;
+    let worktree = Worktree { root: root.clone() };
+    let text = anchor::Source::read(&worktree, &path)
+        .ok_or_else(|| Error(format!("{path}: no such file")))?;
+    let found = anchor::candidates(&path, &text)
+        .ok_or_else(|| Error(format!("{path}: not a language this build reads, or it doesn't parse")))?;
+
+    if args.has("json") {
+        let statements: Vec<serde_json::Value> = found
+            .iter()
+            .map(|c| {
+                json!({
+                    "line": c.line,
+                    "end_line": c.end_line,
+                    "kind": c.kind,
+                    "scope": anchor::scope_label(&c.scope),
+                    "tokens": c.tokens.len(),
+                    "exact": c.exact,
+                    "shape": c.shape,
+                    "text": first_line(&c.snippet),
+                })
+            })
+            .collect();
+        let payload = json!({ "path": path, "statements": statements });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap_or_default());
+        return Ok(0);
+    }
+    for c in &found {
+        println!(
+            "{}:{}  {}  in {}  ({} tokens)",
+            c.line,
+            c.end_line,
+            c.kind,
+            anchor::scope_label(&c.scope),
+            c.tokens.len()
+        );
     }
     Ok(0)
 }

@@ -213,7 +213,9 @@ settles it.
 than the library, so the harness needs no parser of its own: a comment above every noted
 statement, an identifier renamed through a file, a statement moved to another file, each noted
 statement deleted, and a literal edited. 20 notes, **0 surprising verdicts** — and the same
-harness, the same binary, reports the same on a Python project.
+harness, the same binary, reports the same on a Python project. Repeated at 25 notes against a
+release build: 0 again, though the rename and move cases only ever get one note each, so those
+two lines are the weakest evidence on this page.
 
 Both of that run's first failures were the harness lying rather than the tool: an edit that
 landed in a comment, and — less obviously — rewriting CRLF files as LF, which changes the bytes
@@ -290,9 +292,10 @@ This is a prototype of the core loop: anchoring plus the hook.
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
-| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python and TypeScript, no parse cache yet |
+| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python and TypeScript |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
+| `docs/BUILDING.md` | Building the Rust implementation, and the three ways that goes wrong on Windows |
 
 The two implementations sit side by side rather than on separate branches, so one pull request
 can change a rule and both implementations together, and CI holds both to the same conformance
@@ -318,6 +321,15 @@ python -m unittest
 
 The suite includes end-to-end tests that create real git repos and drive the real pre-commit
 hook, plus the shared conformance cases.
+
+```bash
+cd rust
+cargo test
+```
+
+The same conformance cases, the same kind of end-to-end tests. Building this one needs a C
+compiler, because the tree-sitter grammars are C — [docs/BUILDING.md](docs/BUILDING.md) covers
+that and the two Windows failures whose error messages point somewhere other than the cause.
 
 Two harnesses measure the anchoring against real code. Both clone or restore what they read and
 never write to your repository:

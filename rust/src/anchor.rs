@@ -618,7 +618,18 @@ fn near<'a>(cands: impl IntoIterator<Item = &'a Candidate>, scope: &str, distinc
 /// Everything needed to find `target` again, including how crowded its
 /// neighborhood is. `elsewhere` is the statements of every other file: counting
 /// the copies already there is what later tells a real move from boilerplate.
-pub fn make_anchor(target: &Candidate, siblings: &[Candidate], elsewhere: &[&Candidate]) -> Anchor {
+/// Copies of a statement among candidates from other files, counted the slow way.
+///
+/// For callers holding a plain list; anything with a tally should ask it instead,
+/// since that counts the whole repository once and remembers it.
+pub fn far_copies(target: &Candidate, elsewhere: &[&Candidate]) -> (usize, usize) {
+    (
+        elsewhere.iter().filter(|c| c.exact == target.exact).count(),
+        elsewhere.iter().filter(|c| c.shape == target.shape).count(),
+    )
+}
+
+pub fn make_anchor(target: &Candidate, siblings: &[Candidate], far: (usize, usize)) -> Anchor {
     let copies = |pool: &[&Candidate], key: Key| -> usize {
         pool.iter().filter(|c| c.fingerprint(key) == target.fingerprint(key)).count()
     };
@@ -645,8 +656,8 @@ pub fn make_anchor(target: &Candidate, siblings: &[Candidate], elsewhere: &[&Can
             shape: copies(&same_scope, Key::Shape),
             other_exact: copies(&other_scope, Key::Exact),
             other_shape: copies(&other_scope, Key::Shape),
-            far_exact: copies(elsewhere, Key::Exact),
-            far_shape: copies(elsewhere, Key::Shape),
+            far_exact: far.0,
+            far_shape: far.1,
         },
         rival,
         tokens: target.tokens.clone(),

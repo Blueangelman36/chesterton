@@ -58,7 +58,8 @@ fn anchor_for(case: &Case) -> anchor::Anchor {
         for candidate in index.get(path) {
             let first = candidate.snippet.lines().next().unwrap_or("");
             if first.contains(&case.anchor_match) {
-                return anchor::make_anchor(candidate, index.get(path), &index.others(path));
+                let far = anchor::far_copies(candidate, &index.others(path));
+                return anchor::make_anchor(candidate, index.get(path), far);
             }
         }
     }

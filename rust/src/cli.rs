@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde_json::json;
 
 use crate::anchor::{self, Candidate, How, Index, Lang, Match};
+use crate::cache::{Cache, Tally};
 use crate::git::{self, Error, Staged, Worktree};
 use crate::store::{self, Note, Store};
 use crate::suggest;
@@ -190,6 +191,13 @@ fn cmd_add(args: &Args) -> Result<i32, Error> {
             )
         })?;
 
+    let worktree = Worktree { root: root.clone() };
+    let mut cache = Cache::open(&root, anchor::ANCHOR_VERSION, true);
+    let far = Tally::build(&worktree, &mut cache).copies_elsewhere(
+        &path,
+        &target.exact,
+        &target.shape,
+    );
     let note = Note {
         id: store::new_id(&path, target.line, &reason),
         reason,
@@ -197,7 +205,7 @@ fn cmd_add(args: &Args) -> Result<i32, Error> {
         author: git::config(&root, "user.name"),
         created: store::today(),
         snippet: target.snippet.clone(),
-        anchor: anchor::make_anchor(&target, index.get(&path), &index.others(&path)),
+        anchor: anchor::make_anchor(&target, index.get(&path), far),
         retired: None,
         retired_because: None,
     };
@@ -449,16 +457,28 @@ fn cmd_check(args: &Args) -> Result<i32, Error> {
         }
         first_pass
     } else {
-        // A note can live in a file discovery would skip, so its path is read anyway.
+        // Only the files notes point at. Reading the whole repository to check a
+        // handful of statements is most of what `check` used to cost.
+        let worktree = Worktree { root: root.clone() };
         let noted: Vec<String> = notes.iter().map(|note| note.anchor.path.clone()).collect();
-        let index = Index::scan_with(&Worktree { root: root.clone() }, &noted);
-        notes
+        let near = Index::scan_paths(&worktree, &noted);
+        let mut first_pass: Vec<(Note, Match)> = notes
             .into_iter()
             .map(|note| {
-                let located = anchor::locate(&note.anchor, &index);
+                let located = anchor::locate(&note.anchor, &near);
                 (note, located)
             })
-            .collect()
+            .collect();
+        // Before saying code is gone, look everywhere: it may have moved.
+        if first_pass.iter().any(|(_, m)| m.how == How::Removed) {
+            let everything = Index::scan_with(&worktree, &noted);
+            for (note, located) in first_pass.iter_mut() {
+                if located.how == How::Removed {
+                    *located = anchor::locate(&note.anchor, &everything);
+                }
+            }
+        }
+        first_pass
     };
 
     let removed = results.iter().filter(|(_, m)| m.how == How::Removed).count();
@@ -503,7 +523,11 @@ fn cmd_check(args: &Args) -> Result<i32, Error> {
 fn cmd_update(_args: &Args) -> Result<i32, Error> {
     let root = git::repo_root()?;
     let store = Store::new(&root);
-    let index = Index::scan(&Worktree { root: root.clone() });
+    let worktree = Worktree { root: root.clone() };
+    let noted: Vec<String> = store.notes()?.iter().map(|n| n.anchor.path.clone()).collect();
+    let index = Index::scan_with(&worktree, &noted);
+    let mut cache = Cache::open(&root, anchor::ANCHOR_VERSION, true);
+    let tally = Tally::build(&worktree, &mut cache);
     let mut updated = 0;
     for mut note in store.notes()? {
         let located = anchor::locate(&note.anchor, &index);
@@ -515,7 +539,7 @@ fn cmd_update(_args: &Args) -> Result<i32, Error> {
             Some(candidate) => candidate,
             None => continue,
         };
-        if repin(&store, &mut note, &candidate, &index)? {
+        if repin(&store, &mut note, &candidate, &index, &tally)? {
             updated += 1;
             if how != How::Ok {
                 println!(
@@ -539,14 +563,17 @@ fn cmd_confirm(args: &Args) -> Result<i32, Error> {
     let root = git::repo_root()?;
     let store = Store::new(&root);
     let mut note = store.get(args.required(0, "a note id")?)?;
-    let index = Index::scan(&Worktree { root: root.clone() });
+    let worktree = Worktree { root: root.clone() };
+    let index = Index::scan_with(&worktree, &[note.anchor.path.clone()]);
     let candidate = anchor::locate(&note.anchor, &index).candidate.ok_or_else(|| {
         Error(format!(
             "can't find the code for {}; point at it with: fence reanchor {} <file>:<line>",
             note.id, note.id
         ))
     })?;
-    repin(&store, &mut note, &candidate, &index)?;
+    let mut cache = Cache::open(&root, anchor::ANCHOR_VERSION, true);
+    let tally = Tally::build(&worktree, &mut cache);
+    repin(&store, &mut note, &candidate, &index, &tally)?;
     git::stage_notes(&root)?;
     println!("fence: {} confirmed at {}:{}", note.id, candidate.path, candidate.line);
     Ok(0)
@@ -558,7 +585,9 @@ fn cmd_reanchor(args: &Args) -> Result<i32, Error> {
     let mut note = store.get(args.required(0, "a note id")?)?;
     let (path, start, end) = parse_loc(args.required(1, "<file>:<line>")?, &root)?;
     let (index, target) = pick(&root, &path, start, end)?;
-    repin(&store, &mut note, &target, &index)?;
+    let mut cache = Cache::open(&root, anchor::ANCHOR_VERSION, true);
+    let tally = Tally::build(&Worktree { root: root.clone() }, &mut cache);
+    repin(&store, &mut note, &target, &index, &tally)?;
     git::stage_notes(&root)?;
     println!(
         "fence: {} now points at {}:{}  in {}",
@@ -596,7 +625,9 @@ fn pick(root: &Path, path: &str, start: usize, end: usize) -> Result<(Index, Can
             Error(format!("no statement covers {path}:{span}"))
         })?
         .clone();
-    Ok((Index::scan(&worktree), target))
+    // Only the file in question: copies elsewhere come from the tally, which
+    // counts the repository once and remembers it.
+    Ok((Index::scan_paths(&worktree, &[path.to_string()]), target))
 }
 
 /// Two notes on one statement is nearly always a re-run, and occasionally meant.
@@ -637,8 +668,10 @@ fn repin(
     note: &mut Note,
     target: &Candidate,
     index: &Index,
+    tally: &Tally,
 ) -> Result<bool, Error> {
-    let anchor = anchor::make_anchor(target, index.get(&target.path), &index.others(&target.path));
+    let far = tally.copies_elsewhere(&target.path, &target.exact, &target.shape);
+    let anchor = anchor::make_anchor(target, index.get(&target.path), far);
     if anchor == note.anchor && target.snippet == note.snippet {
         return Ok(false);
     }

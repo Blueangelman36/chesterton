@@ -179,6 +179,17 @@ It also made one limitation concrete: a short, generic statement moved to anothe
 following it across files would be guessing. Fence errs toward speaking up, and `fence reanchor`
 settles it.
 
+**TypeScript.** A real 43-file TypeScript and TSX project, tested through the command line rather
+than the library, so the harness needs no parser of its own: a comment above every noted
+statement, an identifier renamed through a file, a statement moved to another file, each noted
+statement deleted, and a literal edited. 20 notes, **0 surprising verdicts** — and the same
+harness, the same binary, reports the same on a Python project.
+
+Both of that run's first failures were the harness lying rather than the tool: an edit that
+landed in a comment, and — less obviously — rewriting CRLF files as LF, which changes the bytes
+*inside* docstrings, template literals and JSX, and so genuinely changes the code. A harness that
+edits files has to be as careful as the thing it is testing.
+
 **Speed.** That corpus was also slow enough to be worth profiling, which said something useful:
 parsing is everything, and locating is free.
 
@@ -274,4 +285,8 @@ never write to your repository:
 python tools/replay.py <repo> <clone-dir>   # walk real history, count false alarms
 python tools/stress.py <clone-dir>          # apply refactors with a known right answer
 python tools/bench.py <repo> --profile      # where the time goes
+python tools/stress_cli.py <binary> <repo> --suffix .ts,.tsx
 ```
+
+The last one drives a built binary instead of importing the library, so it tests any language an
+implementation reads — it asks `fence statements` where the code is and edits by line.

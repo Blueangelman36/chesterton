@@ -896,7 +896,7 @@ fn explain(fence_dir: &Path) -> Result<(), Error> {
     }
     let ignore = fence_dir.join(".gitignore");
     if !ignore.exists() {
-        std::fs::write(&ignore, "cache.json\ncache.json.tmp\n")?;
+        std::fs::write(&ignore, "cache*.json\ncache*.tmp\n")?;
     }
     Ok(())
 }

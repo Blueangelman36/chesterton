@@ -43,7 +43,9 @@ impl Cache {
     /// Read-only is for the hook: a commit should not be writing files.
     pub fn open(root: &Path, version: u32, writable: bool) -> Cache {
         let dir = root.join(".fence");
-        let path = dir.join("cache.json");
+        // One cache per scheme: the two builds would otherwise throw away each
+        // other's on every switch, since neither can read the other's hashes.
+        let path = dir.join(format!("cache.{version}.json"));
         let stored = std::fs::read_to_string(&path)
             .ok()
             .and_then(|text| serde_json::from_str::<Stored>(&text).ok())
@@ -95,7 +97,7 @@ impl Cache {
         // `.fence` is staged wholesale, and derived data does not belong in a commit.
         let ignore = self.dir.join(".gitignore");
         if !ignore.exists() {
-            let _ = std::fs::write(&ignore, "cache.json\ncache.json.tmp\n");
+            let _ = std::fs::write(&ignore, "cache*.json\ncache*.tmp\n");
         }
         if let Ok(text) = serde_json::to_string(&self.stored) {
             // Written beside the target and moved into place, so an interrupted

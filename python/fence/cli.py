@@ -138,7 +138,7 @@ before it lands.
 - `notes/` — one file per recorded reason, committed and reviewed with the code.
 - `retired/` — reasons that no longer apply, kept because why a fence came down is
   worth knowing too.
-- `cache.json` — derived data, ignored by git. Safe to delete at any time.
+- `cache.*.json` — derived data, ignored by git. Safe to delete at any time.
 
 In a note, `reason` is the part a person wrote. The `anchor` below it is written by
 the tool: fingerprints of the statement the note is pinned to, so the code can be
@@ -537,7 +537,7 @@ def _explain(fence_dir: Path) -> None:
         readme.write_text(FENCE_README, encoding="utf-8", newline="\n")
     ignore = fence_dir / ".gitignore"
     if not ignore.exists():
-        ignore.write_text("cache.json\ncache.json.tmp\n", encoding="utf-8", newline="\n")
+        ignore.write_text("cache*.json\ncache*.tmp\n", encoding="utf-8", newline="\n")
 
 
 def _worktree_index(root: Path) -> A.Index:

@@ -23,7 +23,9 @@ class Cache:
 
     def __init__(self, root: Path, version: int, writable: bool = True):
         self.dir = root / ".fence"
-        self.path = self.dir / "cache.json"
+        # One cache per scheme: the two builds would otherwise throw away each
+        # other's on every switch, since neither can read the other's hashes.
+        self.path = self.dir / f"cache.{version}.json"
         self.version = version
         self.writable = writable
         self._entries: dict[str, dict] = {}
@@ -84,7 +86,7 @@ class Cache:
         """`.fence` is staged wholesale, and derived data doesn't belong in a commit."""
         ignore = self.dir / ".gitignore"
         if not ignore.exists():
-            ignore.write_text("cache.json\ncache.json.tmp\n", encoding="utf-8", newline="\n")
+            ignore.write_text("cache*.json\ncache*.tmp\n", encoding="utf-8", newline="\n")
 
 
 def _sha(source: str) -> str:

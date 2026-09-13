@@ -9,7 +9,7 @@ code. The conformance suite is what enforces the second half.
 ```
 .fence/notes/<id>.json      active notes
 .fence/retired/<id>.json    notes whose reason no longer applies
-.fence/cache.json           derived: fingerprints per file, keyed by content
+.fence/cache.<version>.json derived: fingerprints per file, keyed by content
 ```
 
 Only the first two belong in a commit, and `.fence/.gitignore` keeps the third

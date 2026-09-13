@@ -230,6 +230,8 @@ parsing is everything, and locating is free.
 | Locate 40 notes against a parsed index | 0.00s | 0.00s |
 | The whole stress harness over the corpus | >10 min | 51s |
 | Count copies across django's 2,932 files | 32.4s | 1.4s (cache warm) |
+| `fence check` on django, the Rust build | 33.5s | 0.1s |
+| `fence add` on django, the Rust build | 12.6s | 1.0s (cache warm) |
 
 Three changes, none of which move a single fingerprint: identifiers are renamed *while* the
 statement is serialized rather than on a deep copy of it — copying was over half the cost of
@@ -273,11 +275,11 @@ This is a prototype of the core loop: anchoring plus the hook.
    sentences that explain why code exists, and propose them as notes with a link to the source.
    Nobody writes documentation voluntarily, so the tool should do the writing and ask only for a
    yes or no.
-2. **One implementation per repository, until they can share notes.** Both are usable now, but
-   their fingerprints are deliberately different bytes, so notes written by one read as `changed`
-   to the other until `fence update` re-pins them — and then they read as `changed` to the first.
-   A repository should record which implementation it expects, and the other should say so plainly
-   instead of quietly re-pinning everything. That is the next thing to fix.
+2. **Both implementations can share a repository.** A note carries one anchor per scheme, each
+   build reads and rewrites only its own, and `fence update` on a note another build wrote *adds*
+   an anchor beside theirs rather than replacing it. Run `update` once from each and both find
+   what they wrote. Until then, the other build's notes read as `other tool`, which warns and
+   never blocks.
 3. **Other languages.** The Rust side already parses with tree-sitter, so a new language is
    mostly a grammar plus its statement and scope rules — and a set of conformance cases.
 4. **Make it fast on large repositories**, per Status above.

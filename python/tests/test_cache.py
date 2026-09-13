@@ -35,7 +35,7 @@ class CacheTest(unittest.TestCase):
 
     def test_a_corrupt_cache_is_ignored_rather_than_fatal(self):
         (self.root / ".fence").mkdir()
-        (self.root / ".fence" / "cache.json").write_text("{not json", encoding="utf-8")
+        (self.root / ".fence" / "cache.3.json").write_text("{not json", encoding="utf-8")
         self.assertIsNone(Cache(self.root, 3).get("src/app.py", "source text"))
 
     def test_files_that_are_gone_are_dropped(self):
@@ -43,14 +43,14 @@ class CacheTest(unittest.TestCase):
         cache.put("src/app.py", "source text", self.counts)
         cache.put("src/gone.py", "source text", self.counts)
         cache.save(keep={"src/app.py"})
-        stored = json.loads((self.root / ".fence" / "cache.json").read_text())
+        stored = json.loads((self.root / ".fence" / "cache.3.json").read_text())
         self.assertEqual(list(stored["files"]), ["src/app.py"])
 
     def test_it_keeps_itself_out_of_commits(self):
         cache = Cache(self.root, 3)
         cache.put("src/app.py", "source text", self.counts)
         cache.save()
-        self.assertIn("cache.json", (self.root / ".fence" / ".gitignore").read_text())
+        self.assertIn("cache*.json", (self.root / ".fence" / ".gitignore").read_text())
 
 
 if __name__ == "__main__":

@@ -218,11 +218,11 @@ class CliTest(unittest.TestCase):
         code, out = self.fence("add", f"app.py:{line_of(BASE, 'time.sleep')}",
                                "-m", "Safari fires focus twice without it")
         self.assertEqual(code, 0, out)
-        cache = self.repo / ".fence" / "cache.json"
+        cache = self.repo / ".fence" / f"cache.{A.ANCHOR_VERSION}.json"
         self.assertTrue(cache.is_file())
         self.assertIn("app.py", json.loads(cache.read_text(encoding="utf-8"))["files"])
         self.assertEqual(self.commit("second note").returncode, 0)
-        self.assertNotIn("cache.json", git(self.repo, "ls-files").stdout)
+        self.assertNotIn("cache.", git(self.repo, "ls-files").stdout)
 
     def test_a_warm_cache_gives_the_same_answers(self):
         self.fence("add", f"app.py:{line_of(BASE, 'time.sleep')}", "-m", "keep the delay")

@@ -35,7 +35,9 @@ const TIMING: &[&str] = &[
 /// Above this many copies elsewhere, a statement is how this project writes
 /// things rather than a decision anybody made.
 const CONVENTION: usize = 3;
-const COMMENT_LINES: usize = 4;
+/// Generous, because a draft that starts mid-sentence is worse than a long one:
+/// a doc comment is one thought and cutting it from the bottom ruins it.
+const COMMENT_LINES: usize = 12;
 
 #[derive(Debug, Clone)]
 pub struct Suggestion {
@@ -128,12 +130,17 @@ fn is_comment_line(trimmed: &str, lang: Lang) -> bool {
     comment_markers(lang).iter().any(|marker| trimmed.starts_with(marker))
 }
 
-fn strip_markers(trimmed: &str, lang: Lang) -> String {
-    let mut text = trimmed;
-    for marker in comment_markers(lang) {
-        text = text.trim_start_matches(marker);
+fn strip_markers(trimmed: &str, _lang: Lang) -> String {
+    // The end of a doc comment comes off first: trimming `*` from `*/` would
+    // leave a stray slash on the end of the draft.
+    let mut text = trimmed.trim().trim_end_matches("*/").trim_end();
+    for marker in ["/**", "/*", "//", "*", "#"] {
+        if let Some(rest) = text.strip_prefix(marker) {
+            text = rest.trim_start();
+            break;
+        }
     }
-    text.trim_start_matches("*/").trim().to_string()
+    text.trim().to_string()
 }
 
 /// Code only: string bodies and comments removed, line count preserved.
@@ -202,8 +209,15 @@ pub fn comment_for(lines: &[&str], line: usize, lang: Lang) -> String {
         if !is_comment_line(trimmed, lang) {
             break;
         }
-        collected.push(strip_markers(trimmed, lang));
+        let text = strip_markers(trimmed, lang);
+        if !text.is_empty() {
+            collected.push(text);
+        }
         at -= 1;
+        // `/*` opens the block, so there is nothing above it worth reading.
+        if lang != Lang::Python && trimmed.starts_with("/*") {
+            break;
+        }
     }
     collected.reverse();
 
@@ -428,6 +442,22 @@ mod tests {
         assert!(!chosen_number("const index = 0"));
         assert!(chosen_number("setTimeout(fn, 0.05)"));
         assert!(chosen_number("const port = 8420"));
+    }
+
+    #[test]
+    fn a_doc_comment_comes_out_as_a_sentence() {
+        let source = [
+            "/**",
+            " * Shared rather than per-instance on purpose: one upstream fetch per",
+            " * TTL window, which is what keeps this inside free-tier caps.",
+            " */",
+            "export async function cacheGet() {}",
+        ];
+        let said = comment_for(&source, 5, Lang::TypeScript);
+        assert!(said.starts_with("Shared rather than per-instance"), "{said}");
+        assert!(said.ends_with("free-tier caps."), "{said}");
+        assert!(!said.contains('*'), "{said}");
+        assert!(!said.contains('/'), "{said}");
     }
 
     #[test]

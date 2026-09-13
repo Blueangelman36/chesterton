@@ -75,7 +75,9 @@ TEST_PATH = re.compile(r"(^|/)(tests?|spec)/|(^|/)test_[^/]*$|[._](test|spec)\.[
 # Above this many copies elsewhere, a statement is how this project writes things
 # rather than a decision anybody made.
 CONVENTION = 3
-COMMENT_LINES = 4
+# Generous, because a draft that starts mid-sentence is worse than a long one:
+# a comment block is one thought, and cutting it from the bottom ruins it.
+COMMENT_LINES = 12
 
 
 @dataclass

@@ -270,6 +270,15 @@ tree-sitter, and their hashes are deliberately different bytes — which is what
 
 ## Development
 
+**Fence is installed on this repository**, and the notes in `.fence/` are real ones about the
+decisions here that look arbitrary and are not. One consequence is worth knowing before it
+surprises you: the hook runs the code in `python/fence/`, which is the code you are editing, so an
+edit that breaks the tool blocks the commit with an internal error rather than a verdict.
+`git commit --no-verify` is the way through while the tool is mid-surgery.
+
+Exit codes: `0` nothing to say, `1` something is blocking, `2` the command was used wrong,
+`3` a bug in fence (with `FENCE_DEBUG=1` for the traceback).
+
 ```bash
 cd python
 python -m unittest

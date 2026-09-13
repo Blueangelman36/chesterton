@@ -203,6 +203,20 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("[REMOVED]", out)
 
+    def test_an_unexpected_failure_is_not_a_traceback(self):
+        """Found by installing fence on its own repository: an edit that broke the
+        tool put a Python traceback in the middle of a commit."""
+        import fence.cli as module
+        original = module.cmd_list
+        module.cmd_list = lambda args: 1 / 0
+        try:
+            code, out = self.fence("list")
+        finally:
+            module.cmd_list = original
+        self.assertEqual(code, 3)
+        self.assertIn("bug in fence", out)
+        self.assertNotIn("Traceback", out)
+
     def test_bad_location_is_a_clear_error(self):
         code, out = self.fence("add", "app.py", "-m", "x")
         self.assertEqual(code, 2)

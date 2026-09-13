@@ -2,7 +2,9 @@
 
 import argparse
 import json
+import os
 import sys
+import traceback
 from collections import Counter
 from pathlib import Path
 
@@ -39,6 +41,18 @@ def main(argv: list[str] | None = None) -> int:
     except (FenceError, GitError) as e:
         print(f"fence: {e}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        return 130
+    except Exception as e:
+        # A traceback in the middle of someone's commit says nothing they can act
+        # on. Still non-zero: if the check could not run, it did not pass.
+        print(f"fence: internal error ({type(e).__name__}: {e})", file=sys.stderr)
+        print("fence: that is a bug in fence, not in your repository. The commit is "
+              "blocked because the check could not run; git commit --no-verify goes "
+              "ahead. Set FENCE_DEBUG=1 for the traceback.", file=sys.stderr)
+        if os.environ.get("FENCE_DEBUG"):
+            traceback.print_exc()
+        return 3
 
 
 AGENTS_MARKER = "<!-- fence -->"

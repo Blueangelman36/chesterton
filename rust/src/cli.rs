@@ -13,6 +13,14 @@ use crate::text;
 const HOOK_MARKER: &str = "# installed by fence";
 
 pub fn main() -> i32 {
+    // A backtrace in the middle of someone's commit says nothing they can act on.
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("fence: internal error: {info}");
+        eprintln!(
+            "fence: that is a bug in fence, not in your repository. The commit is blocked \
+             because the check could not run; git commit --no-verify goes ahead."
+        );
+    }));
     let argv: Vec<String> = std::env::args().skip(1).collect();
     match run(&argv) {
         Ok(code) => code,

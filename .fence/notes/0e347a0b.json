@@ -1,0 +1,27 @@
+{
+  "id": "0e347a0b",
+  "reason": "Keyed by a hash of the content rather than mtime or size. mtime caching can silently miss a change, and silently missing changes is the one thing this tool must not do. Reading every file costs about a second on 2,900 files against 30 seconds to parse them.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "known = self.cache.get(path, source)",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "Index._counts_for",
+    "kind": "Assign",
+    "line": 255,
+    "exact": "222a4c007659b220",
+    "shape": "31b7f4bb4c0e7107",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.37037037037037035,
+    "tokens": ["known", "=", "self", ".", "cache", ".", "get", "(", "path", ",", "source", ")"]
+  }
+}

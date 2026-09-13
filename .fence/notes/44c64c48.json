@@ -1,0 +1,27 @@
+{
+  "id": "44c64c48",
+  "reason": "ast gains fields between Python versions - 3.12 added type_params to every definition - and a fingerprint that moved with it would make every note in a repository read as changed the day someone upgraded. Skipping empty and bookkeeping fields is what keeps notes valid from 3.11 to 3.14; tests/golden_fingerprints.json is the proof.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "SKIP_FIELDS = {\"ctx\", \"type_comment\", \"kind\"}",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "",
+    "kind": "Assign",
+    "line": 36,
+    "exact": "00f2435e6730826f",
+    "shape": "9d933383510d602e",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.11363636363636363,
+    "tokens": ["SKIP_FIELDS", "=", "{", "\"ctx\"", ",", "\"type_comment\"", ",", "\"kind\"", "}"]
+  }
+}

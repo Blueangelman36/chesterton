@@ -1,0 +1,27 @@
+{
+  "id": "1995dca2",
+  "reason": "An anchor from another implementation cannot be compared by fingerprint at all. Calling that changed blames the code, and calling it removed would block a commit over a difference between tools, so the hash passes are skipped and the verdict is foreign.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "if not unfamiliar:\n    for key, how in ((\"exact\", \"ok\"), (\"shape\", \"renamed\")):\n        hits = [c for c in near if getattr(c, key) == anchor[key]]\n        here = [c for c in hits if c.scope == scope]\n        if here and len(here) >= dupes.get(key, 1):\n            return Match(how, closest(here))\n        if here and key == \"exact\":\n            return Match(\"ambiguous\", closest(here))\n        if hits and not here and len(hits) > dupes.get(f\"other_{key}\", 0):\n            return Match(\"moved\", closest(hits))\n\n    # A move means a copy turned up somewhere that didn't have one before.\n...",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "locate",
+    "kind": "If",
+    "line": 305,
+    "exact": "fec558af6b65c1fd",
+    "shape": "26e919bee97701a5",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.5957446808510638,
+    "tokens": ["if", "not", "unfamiliar", ":", "for", "key", ",", "how", "in", "(", "(", "\"exact\"", ",", "\"ok\"", ")", ",", "(", "\"shape\"", ",", "\"renamed\"", ")", ")", ":", "hits", "=", "[", "c", "for", "c", "in", "near", "if", "getattr", "(", "c", ",", "key", ")", "==", "anchor", "[", "key", "]", "]", "here", "=", "[", "c", "for", "c", "in", "hits", "if", "c", ".", "scope", "==", "scope", "]", "if", "here", "and", "len", "(", "here", ")", ">=", "dupes", ".", "get", "(", "key", ",", "1", ")", ":", "return", "Match", "(", "how", ",", "closest", "(", "here", ")", ")", "if", "here", "and", "key", "==", "\"exact\"", ":", "return", "Match", "(", "\"ambiguous\"", ",", "closest", "(", "here", ")", ")", "if", "hits", "and", "not", "here", "and", "len", "(", "hits", ")", ">", "dupes", ".", "get", "(", "f\"", "other_", "{", "key", "}", "\"", ",", "0", ")", ":", "return", "Match", "(", "\"moved\"", ",", "closest", "(", "hits", ")", ")", "if", "distinctive", ":", "far", "=", "index", ".", "copies_elsewhere", "(", "path", ",", "anchor", "[", "\"exact\"", "]", ",", "anchor", "[", "\"shape\"", "]", ")", "for", "key", ",", "count", "in", "(", "(", "\"exact\"", ",", "far", "[", "0", "]", ")", ",", "(", "\"shape\"", ",", "far", "[", "1", "]", ")", ")", ":", "if", "count", ">", "dupes", ".", "get", "(", "f\"", "far_", "{", "key", "}", "\"", ",", "0", ")", ":", "hits", "=", "index", ".", "find_elsewhere", "(", "path", ",", "anchor", "[", "key", "]", ",", "key", ")", "if", "hits", ":", "return", "Match", "(", "\"moved\"", ",", "closest", "(", "hits", ")", ")"]
+  }
+}

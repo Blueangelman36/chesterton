@@ -1,0 +1,27 @@
+{
+  "id": "d9cde490",
+  "reason": "Values and attributes are numbered separately because renaming a variable leaves attributes spelled as they were. Found on psf/requests, where Error and String are imported names that also appear as attributes: one shared namespace shifted every attribute number and made an ordinary rename read as a deletion.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "IDENT_FIELDS = {(\"Name\", \"id\"): \"value\", (\"arg\", \"arg\"): \"value\",\n                (\"FunctionDef\", \"name\"): \"value\", (\"AsyncFunctionDef\", \"name\"): \"value\",\n                (\"ClassDef\", \"name\"): \"value\", (\"Attribute\", \"attr\"): \"attr\"}",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "",
+    "kind": "Assign",
+    "line": 42,
+    "exact": "1f998ffd1029306d",
+    "shape": "158a8a81e49701ff",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.0967741935483871,
+    "tokens": ["IDENT_FIELDS", "=", "{", "(", "\"Name\"", ",", "\"id\"", ")", ":", "\"value\"", ",", "(", "\"arg\"", ",", "\"arg\"", ")", ":", "\"value\"", ",", "(", "\"FunctionDef\"", ",", "\"name\"", ")", ":", "\"value\"", ",", "(", "\"AsyncFunctionDef\"", ",", "\"name\"", ")", ":", "\"value\"", ",", "(", "\"ClassDef\"", ",", "\"name\"", ")", ":", "\"value\"", ",", "(", "\"Attribute\"", ",", "\"attr\"", ")", ":", "\"attr\"", "}"]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "32d93532",
+  "reason": "A single registry shared with the Rust implementation rather than a per-implementation counter: 1 and 2 are retired schemes, 3 is this one, 4 is tree-sitter. Bumping it re-pins every existing note, so change it only when the fingerprints genuinely differ.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "ANCHOR_VERSION = 3",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "",
+    "kind": "Assign",
+    "line": 51,
+    "exact": "cca92453a53e6c77",
+    "shape": "da2a33dc2627e454",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.1111111111111111,
+    "tokens": ["ANCHOR_VERSION", "=", "3"]
+  }
+}

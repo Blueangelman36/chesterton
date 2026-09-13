@@ -1,0 +1,27 @@
+{
+  "id": "b730b741",
+  "reason": "A move means a copy appeared somewhere that did not have one before. Comparing against the recorded count is what stops boilerplate that was duplicated all along - a main guard, a field default - from vouching for code that just disappeared. Found on sdrelay, where deleting a main guard read as moved.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "if count > dupes.get(f\"far_{key}\", 0):\n    hits = index.find_elsewhere(path, anchor[key], key)\n    if hits:\n        return Match(\"moved\", closest(hits))",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "locate",
+    "kind": "If",
+    "line": 323,
+    "exact": "2c741b04977aa011",
+    "shape": "55a497e1937bdcec",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.6517857142857143,
+    "tokens": ["if", "count", ">", "dupes", ".", "get", "(", "f\"", "far_", "{", "key", "}", "\"", ",", "0", ")", ":", "hits", "=", "index", ".", "find_elsewhere", "(", "path", ",", "anchor", "[", "key", "]", ",", "key", ")", "if", "hits", ":", "return", "Match", "(", "\"moved\"", ",", "closest", "(", "hits", ")", ")"]
+  }
+}

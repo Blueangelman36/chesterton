@@ -1,0 +1,27 @@
+{
+  "id": "d5d9e4fc",
+  "reason": "The placeholder is random because a fixed one could appear inside the note reason or snippet, which are serialised before the anchor - so the wrong occurrence would be replaced and the note silently corrupted.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "placeholder = f\"__TOKENS_{uuid.uuid4().hex}__\"",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/store.py",
+    "scope": "_write",
+    "kind": "Assign",
+    "line": 74,
+    "exact": "71e04ff568e5b891",
+    "shape": "bf06c471ff856d1b",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.17543859649122806,
+    "tokens": ["placeholder", "=", "f\"", "__TOKENS_", "{", "uuid", ".", "uuid4", "(", ")", ".", "hex", "}", "__", "\""]
+  }
+}

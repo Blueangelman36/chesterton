@@ -1,0 +1,27 @@
+{
+  "id": "5207292c",
+  "reason": "Below this a statement is too generic to follow out of its own scope, and following it anyway gives a confident wrong answer. 12 came from real code. A short function moved to another file is reported as removed on purpose: that errs toward speaking up.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "MIN_DISTINCTIVE_TOKENS = 12",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "",
+    "kind": "Assign",
+    "line": 53,
+    "exact": "95e1344419ae55ca",
+    "shape": "a6616eb6c2c677f5",
+    "dupes": {
+      "exact": 1,
+      "shape": 2,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.42857142857142855,
+    "tokens": ["MIN_DISTINCTIVE_TOKENS", "=", "12"]
+  }
+}

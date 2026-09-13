@@ -1,0 +1,27 @@
+{
+  "id": "0ffbf937",
+  "reason": "Compared by identity or position rather than identity alone, because make_anchor is handed a separately parsed sibling list: the target is in it as a different object, and counting it as its own lookalike made rival unbeatable and turned every edit into removed.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-12",
+  "snippet": "def _same_statement(a, b):\n    return a is b or (a.path == b.path and a.line == b.line and a.exact == b.exact)",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "",
+    "kind": "FunctionDef",
+    "line": 362,
+    "exact": "48fe6f09e2d30637",
+    "shape": "a2ad9213abb8d334",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.1566265060240964,
+    "tokens": ["def", "_same_statement", "(", "a", ",", "b", ")", ":", "return", "a", "is", "b", "or", "(", "a", ".", "path", "==", "b", ".", "path", "and", "a", ".", "line", "==", "b", ".", "line", "and", "a", ".", "exact", "==", "b", ".", "exact", ")"]
+  }
+}

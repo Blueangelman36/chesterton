@@ -408,18 +408,18 @@ pub fn collect(
             None => continue,
         };
         let lines: Vec<&str> = source.split('\n').collect();
-        let here: Vec<(usize, usize)> = taken
+        let recorded: Vec<(usize, usize)> = taken
             .iter()
             .filter(|(p, _, _)| p == path)
             .map(|(_, line, end)| (*line, *end))
             .collect();
         for candidate in candidates {
-            if here.iter().any(|span| *span == (candidate.line, candidate.end_line)) {
+            if recorded.iter().any(|span| *span == (candidate.line, candidate.end_line)) {
                 continue;
             }
             // A reason recorded on the statement inside this one is the same
             // reason. Discounted rather than hidden, in case this one has its own.
-            let neighbouring = here.iter().any(|(start, end)| {
+            let neighbouring = recorded.iter().any(|(start, end)| {
                 (candidate.line <= *start && candidate.end_line >= *end)
                     || (*start <= candidate.line && *end >= candidate.end_line)
             });

@@ -360,7 +360,9 @@ def cmd_update(args) -> int:
     updated = 0
     for note in store.notes():
         m = A.locate(note["anchor"], index)
-        if m.how not in ("ok", "renamed", "moved"):
+        # `foreign` included on purpose: re-pinning a note another build wrote
+        # adds our anchor beside theirs, and then both builds find their own.
+        if m.how not in ("ok", "renamed", "moved", "foreign"):
             continue
         c = m.candidate
         if _reanchor(store, note, c, index):

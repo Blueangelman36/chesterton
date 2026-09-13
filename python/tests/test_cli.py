@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fence import anchor as A
 from fence.cli import main
 from fence.store import Store
 from tests.test_anchor import BASE, GUARD_BLOCK, line_of
@@ -184,6 +185,26 @@ class CliTest(unittest.TestCase):
         self.assertIn("name: fence", skill.read_text(encoding="utf-8"))
         self.fence("init", "--agents")
         self.assertEqual((self.repo / "AGENTS.md").read_text(encoding="utf-8"), agents)
+
+    def test_a_note_from_another_build_is_adopted_rather_than_taken_over(self):
+        """The two implementations can share a repository: each build keeps its own
+        anchor and leaves the other's alone."""
+        stored = self.repo / ".fence" / "notes" / f"{self.note['id']}.json"
+        written = json.loads(stored.read_text(encoding="utf-8"))
+        ours = written["anchors"][str(A.ANCHOR_VERSION)]
+        theirs = dict(ours, version=99, exact="not-comparable", shape="not-comparable")
+        written["anchors"] = {"99": theirs}
+        stored.write_text(json.dumps(written, indent=2), encoding="utf-8")
+
+        code, out = self.fence("check")
+        self.assertEqual(code, 0, out)
+        self.assertIn("other tool", out)
+
+        self.fence("update")
+        kept = json.loads(stored.read_text(encoding="utf-8"))["anchors"]
+        self.assertIn("99", kept)
+        self.assertIn(str(A.ANCHOR_VERSION), kept)
+        self.assertIn("[ok]", self.fence("check")[1])
 
     def test_init_leaves_an_explanation_for_whoever_finds_the_directory(self):
         readme = self.repo / ".fence" / "README.md"

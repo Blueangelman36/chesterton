@@ -165,6 +165,43 @@ fn retiring_the_reason_unblocks_the_commit() {
 }
 
 #[test]
+fn a_note_from_another_build_is_adopted_rather_than_taken_over() {
+    let repo = Repo::new("adopt");
+    let id = record(&repo);
+    let stored = repo.dir.join(".fence").join("notes").join(format!("{id}.json"));
+
+    let mut written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&stored).unwrap()).unwrap();
+    let ours = written["anchors"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()
+        .clone();
+    let mut theirs = ours.clone();
+    theirs["version"] = serde_json::json!(99);
+    theirs["exact"] = serde_json::json!("not-comparable");
+    theirs["shape"] = serde_json::json!("not-comparable");
+    written["anchors"] = serde_json::json!({ "99": theirs });
+    std::fs::write(&stored, serde_json::to_string_pretty(&written).unwrap()).unwrap();
+
+    let (code, out) = repo.fence(&["check"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("other tool"), "{out}");
+
+    let (code, out) = repo.fence(&["update"]);
+    assert_eq!(code, 0, "{out}");
+    let kept: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&stored).unwrap()).unwrap();
+    let mine = fence::anchor::ANCHOR_VERSION.to_string();
+    assert!(kept["anchors"]["99"].is_object(), "{kept}");
+    assert!(kept["anchors"][mine.as_str()].is_object(), "{kept}");
+    let (_, out) = repo.fence(&["check"]);
+    assert!(out.contains("[ok]"), "{out}");
+}
+
+#[test]
 fn suggest_finds_a_typescript_statement_worth_recording() {
     let repo = Repo::new("suggest");
     repo.write(

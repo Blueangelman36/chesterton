@@ -205,7 +205,9 @@ fn cmd_add(args: &Args) -> Result<i32, Error> {
         author: git::config(&root, "user.name"),
         created: store::today(),
         snippet: target.snippet.clone(),
+        anchors: Default::default(),
         anchor: anchor::make_anchor(&target, index.get(&path), far),
+        legacy: None,
         retired: None,
         retired_because: None,
     };
@@ -531,7 +533,9 @@ fn cmd_update(_args: &Args) -> Result<i32, Error> {
     let mut updated = 0;
     for mut note in store.notes()? {
         let located = anchor::locate(&note.anchor, &index);
-        if !matches!(located.how, How::Ok | How::Renamed | How::Moved) {
+        // `Foreign` included on purpose: re-pinning a note another build wrote
+        // adds our anchor beside theirs, and then both builds find their own.
+        if !matches!(located.how, How::Ok | How::Renamed | How::Moved | How::Foreign) {
             continue;
         }
         let how = located.how.clone();

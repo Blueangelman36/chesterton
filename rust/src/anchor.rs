@@ -246,7 +246,7 @@ impl Dupes {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Anchor {
     pub version: u32,
     pub path: String,

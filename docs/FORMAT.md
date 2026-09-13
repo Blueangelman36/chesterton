@@ -96,11 +96,24 @@ is ordinary in generated or table-driven code — every attribute's number shift
 and an ordinary rename read as a deletion. The conformance suite now carries that
 case; it was found by running the stress harness over a real project.
 
-**Two implementations should not share one repository yet.** Each writes its own
-version, and each treats the other's anchors as fingerprint-less — so a note
-written by one reads as `changed` to the other, and `fence update` re-pins it,
-which makes it read as `changed` to the first. Until a note can carry more than
-one scheme, or a repository can declare which implementation it expects, pick one.
+**A note carries one anchor per scheme**, which is how two implementations share
+a repository. `anchors` maps a version to its anchor:
+
+```json
+"anchors": {
+  "3": { "version": 3, "path": "src/client.py", "exact": "9f2c…", "…": "…" },
+  "4": { "version": 4, "path": "src/client.py", "exact": "b71a…", "…": "…" }
+}
+```
+
+Each build reads its own entry, and writing back **replaces only its own**. A note
+that has no entry for the reading build gets the `foreign` verdict, and that
+build's `fence update` adds its entry beside the other rather than replacing it —
+after which both builds find what they wrote and neither keeps re-pinning the
+other's work.
+
+A note written before this (a single `anchor` object) is read as a one-entry map
+and rewritten in the new shape the next time it is saved.
 
 `version` exists because `exact`, `shape` and `tokens` are **implementation-defined**.
 A tree-sitter implementation will hash the same code differently from a Python

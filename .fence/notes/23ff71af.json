@@ -1,0 +1,27 @@
+{
+  "id": "23ff71af",
+  "reason": "Generous, because a draft that starts mid-sentence is worse than a long one: a comment block is one thought, and cutting it from the bottom ruins it.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-13",
+  "snippet": "COMMENT_LINES = 12",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/suggest.py",
+    "scope": "",
+    "kind": "Assign",
+    "line": 80,
+    "exact": "5466510c5d1312ac",
+    "shape": "a6616eb6c2c677f5",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 2
+    },
+    "rival": 0.1111111111111111,
+    "tokens": ["COMMENT_LINES", "=", "12"]
+  }
+}

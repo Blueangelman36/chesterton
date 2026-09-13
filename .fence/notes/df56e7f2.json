@@ -1,0 +1,27 @@
+{
+  "id": "df56e7f2",
+  "reason": "docstrings and long literals: keep notes small",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-13",
+  "snippet": "if len(text) > 32:  # docstrings and long literals: keep notes small\n    text = f\"<{_hash(text)[:8]}>\"",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "_tokens",
+    "kind": "If",
+    "line": 471,
+    "exact": "a184e3e1fef50035",
+    "shape": "8e284a39be8e663f",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.14285714285714285,
+    "tokens": ["if", "len", "(", "text", ")", ">", "32", ":", "text", "=", "f\"", "<", "{", "_hash", "(", "text", ")", "[", ":", "8", "]", "}", ">", "\""]
+  }
+}

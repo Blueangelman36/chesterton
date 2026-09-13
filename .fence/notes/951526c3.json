@@ -1,0 +1,27 @@
+{
+  "id": "951526c3",
+  "reason": "Below this, a rewritten statement is called removed rather than changed. 0.5 came from real edits: changing one token in a short statement still scores about 0.57, and so does a neighbouring lookalike, which is why the rival test sits beside this threshold rather than replacing it.",
+  "source": null,
+  "author": "Blueangelman36",
+  "created": "2026-09-13",
+  "snippet": "CHANGED_THRESHOLD = 0.5",
+  "anchor": {
+    "version": 3,
+    "path": "python/fence/anchor.py",
+    "scope": "",
+    "kind": "Assign",
+    "line": 54,
+    "exact": "f8d4becaf0a0379b",
+    "shape": "fbe8a99fa0726c43",
+    "dupes": {
+      "exact": 1,
+      "shape": 1,
+      "other_exact": 0,
+      "other_shape": 0,
+      "far_exact": 0,
+      "far_shape": 0
+    },
+    "rival": 0.1111111111111111,
+    "tokens": ["CHANGED_THRESHOLD", "=", "0.5"]
+  }
+}

@@ -125,6 +125,20 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(len(Store(self.repo).notes()), 2)
 
+    def test_suggest_finds_the_statement_worth_recording(self):
+        payload = json.loads(self.fence("suggest", "--json")[1])
+        sleeps = [s for s in payload["suggestions"] if "time.sleep" in s["text"]]
+        self.assertTrue(sleeps, payload)
+        self.assertGreater(sleeps[0]["score"], 0)
+        self.assertIn("fence add", sleeps[0]["command"])
+
+    def test_suggest_leaves_out_what_is_already_recorded(self):
+        before = json.loads(self.fence("suggest", "--json")[1])["suggestions"]
+        target = next(s for s in before if "time.sleep" in s["text"])
+        self.fence("add", f"app.py:{target['line']}", "-m", "Safari fires focus twice")
+        after = json.loads(self.fence("suggest", "--json")[1])["suggestions"]
+        self.assertFalse([s for s in after if "time.sleep" in s["text"]])
+
     def test_statements_lists_what_a_note_could_be_pinned_to(self):
         payload = json.loads(self.fence("statements", "app.py", "--json")[1])
         self.assertEqual(payload["path"], "app.py")

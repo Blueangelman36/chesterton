@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import FenceError
 from . import anchor as A
+from . import suggest as suggestions
 from .cache import Cache
 from .gitutil import (GitError, IndexReader, WorktreeReader, blame, git,
                       hooks_dir, repo_root, staged_paths)
@@ -249,6 +250,43 @@ def cmd_list(args) -> int:
         print(f"    why:  {_first_line(n['reason'])}")
         if n.get("source"):
             print(f"    from: {n['source']}")
+    return 0
+
+
+def cmd_suggest(args) -> int:
+    """What to record, for a repository that has recorded nothing yet."""
+    root = repo_root()
+    index = _worktree_index(root)
+    taken = set()
+    for note in Store(root).notes():
+        found = A.locate(note["anchor"], index).candidate
+        if found:
+            taken.add((found.path, found.line))
+
+    paths = [p for p in WorktreeReader(root).paths() if p.endswith(".py")]
+    if args.path:
+        prefix = _repo_path(args.path, root)
+        paths = [p for p in paths if _under(p, prefix)]
+    found = suggestions.collect(index, paths, taken, args.limit)
+
+    if args.json:
+        print(json.dumps({"suggestions": [
+            {"path": s.path, "line": s.line, "end_line": s.end_line, "kind": s.kind,
+             "scope": s.scope, "text": s.text, "score": s.score, "reasons": s.reasons,
+             "draft": s.draft, "command": s.command}
+            for s in found]}, indent=2))
+        return 0
+    if not found:
+        print("fence: nothing stood out. That is not the same as nothing being worth recording.")
+        return 0
+    print(f"fence: {len(found)} statement(s) whose reason may not be written down, worst first.")
+    print("The draft reason is somewhere to start, not something to accept.\n")
+    for item in found:
+        print(f"  {item.path}:{item.line}  in {item.scope}")
+        print(f"      {item.text}")
+        for reason in (item.reasons if args.why else item.reasons[:1]):
+            print(f"      {reason}")
+        print(f"      {item.command}\n")
     return 0
 
 
@@ -608,6 +646,13 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("list", help="list notes, optionally under a path")
     s.add_argument("path", nargs="?")
     s.set_defaults(run=cmd_list)
+
+    s = sub.add_parser("suggest", help="statements whose reason is probably not written down")
+    s.add_argument("path", nargs="?")
+    s.add_argument("--limit", type=int, default=20)
+    s.add_argument("--why", action="store_true", help="every signal, not just the strongest")
+    s.add_argument("--json", action="store_true", help="machine-readable output")
+    s.set_defaults(run=cmd_suggest)
 
     s = sub.add_parser("statements", help="every statement a note could be pinned to, for tooling")
     s.add_argument("path")

@@ -63,6 +63,7 @@ fence: 1559744b now follows client.py:4  in Client.fetch
 | --- | --- |
 | `fence init` | Install the pre-commit hook. `--agents` also writes an `AGENTS.md` block and a Claude Code skill |
 | `fence why FILE[:LINE]` | What reasons are recorded for this file or line. `--json` for machine-readable output |
+| `fence suggest [PATH]` | Statements whose reason is probably not written down, worst first. `--why` for every signal, `--json` for tooling |
 | `fence add FILE:LINE[-END] -m "why"` | Record why a statement exists. `--from-blame` borrows the message of the commit that wrote the line; `--source` records a link or ticket |
 | `fence list [PATH]` | List notes |
 | `fence check [--staged]` | Find each note's code and report what happened to it. `--staged` is what the hook runs: staged files only |
@@ -72,6 +73,35 @@ fence: 1559744b now follows client.py:4  in Client.fetch
 | `fence retire ID -m "what changed"` | The reason no longer applies. The note moves to `.fence/retired/`, because why a fence came down is worth remembering too |
 
 IDs can be shortened to any unique prefix.
+
+## Where to start on a repository that has none of this
+
+```text
+$ fence suggest
+fence: 4 statement(s) whose reason may not be written down, worst first.
+The draft reason is somewhere to start, not something to accept.
+
+  tests/test_pipeline.py:604  in main
+      with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+      a comment above it explains something, and a comment is deleted with the code it explains
+      fence add tests/test_pipeline.py:604 -m "ignore_cleanup_errors: Windows holds SQLite WAL
+      sidecar files briefly after close, which would fail the teardown of an otherwise green run."
+
+  run.py:90  in main
+      time.sleep(0.5)
+      names a timing primitive, and nobody picks a delay by choice
+      fence add run.py:90 --from-blame
+```
+
+The ranking counts rather than judges: a comment that explains rather than describes, a timing
+primitive, a swallowed error, a number somebody chose. The discount matters as much — a statement
+written the same way in several other files is a convention, not a decision, so it drops out. That
+discipline is borrowed from [asof](https://github.com/Blueangelman36/asof), which ranks numeric
+claims by how often the same number appears in two places rather than by how important it looks.
+
+Where a comment already explains, it is offered as a draft to edit. Where nothing does,
+`--from-blame` is offered instead, because the commit that wrote the line usually said why. It
+proposes nothing it cannot support, in the same way asof says `NAME` rather than inventing one.
 
 ## For coding agents
 

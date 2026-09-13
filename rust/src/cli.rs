@@ -307,7 +307,7 @@ fn cmd_suggest(args: &Args) -> Result<i32, Error> {
     let mut taken = Vec::new();
     for note in Store::new(&root).notes()? {
         if let Some(found) = anchor::locate(&note.anchor, &index).candidate {
-            taken.push((found.path, found.line));
+            taken.push((found.path, found.line, found.end_line));
         }
     }
 

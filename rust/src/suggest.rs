@@ -262,7 +262,13 @@ pub fn trailing_comment(line: &str, lang: Lang) -> String {
     String::new()
 }
 
-pub fn rank(candidate: &Candidate, body: &str, comment: &str, copies_elsewhere: usize) -> Suggestion {
+pub fn rank(
+    candidate: &Candidate,
+    body: &str,
+    comment: &str,
+    copies_elsewhere: usize,
+    neighbouring: bool,
+) -> Suggestion {
     let mut found = Suggestion {
         path: candidate.path.clone(),
         line: candidate.line,
@@ -325,6 +331,13 @@ pub fn rank(candidate: &Candidate, body: &str, comment: &str, copies_elsewhere: 
             "written the same way in {copies_elsewhere} other places, so it is a convention rather than a decision"
         ));
     }
+    if neighbouring {
+        found.score -= 3;
+        found.reasons.push(
+            "a reason is already recorded for the statement just inside or around this one"
+                .to_string(),
+        );
+    }
     if is_test(&candidate.path) {
         found.score -= 2;
         found
@@ -367,7 +380,7 @@ fn is_plumbing(kind: &str) -> bool {
 pub fn collect(
     index: &Index,
     paths: &[String],
-    taken: &[(String, usize)],
+    taken: &[(String, usize, usize)],
     limit: usize,
     read: impl Fn(&str) -> Option<String>,
 ) -> Vec<Suggestion> {
@@ -395,10 +408,21 @@ pub fn collect(
             None => continue,
         };
         let lines: Vec<&str> = source.split('\n').collect();
+        let here: Vec<(usize, usize)> = taken
+            .iter()
+            .filter(|(p, _, _)| p == path)
+            .map(|(_, line, end)| (*line, *end))
+            .collect();
         for candidate in candidates {
-            if taken.iter().any(|(p, line)| p == path && *line == candidate.line) {
+            if here.iter().any(|span| *span == (candidate.line, candidate.end_line)) {
                 continue;
             }
+            // A reason recorded on the statement inside this one is the same
+            // reason. Discounted rather than hidden, in case this one has its own.
+            let neighbouring = here.iter().any(|(start, end)| {
+                (candidate.line <= *start && candidate.end_line >= *end)
+                    || (*start <= candidate.line && *end >= candidate.end_line)
+            });
             let total = elsewhere.get(&candidate.exact).copied().unwrap_or(0);
             let mine = here
                 .get(&(path.as_str(), candidate.exact.as_str()))
@@ -409,6 +433,7 @@ pub fn collect(
                 &own_text(candidate, candidates, &lines, lang),
                 &comment_for(&lines, candidate.line, lang),
                 total.saturating_sub(mine),
+                neighbouring,
             );
             if scored.score > 0 {
                 found.push(scored);
@@ -442,6 +467,25 @@ mod tests {
         assert!(!chosen_number("const index = 0"));
         assert!(chosen_number("setTimeout(fn, 0.05)"));
         assert!(chosen_number("const port = 8420"));
+    }
+
+    #[test]
+    fn a_reason_recorded_next_door_is_discounted() {
+        let source = "function go(fn: () => void) {\n  \
+                      // safari fires focus twice, so the delay is deliberate\n  \
+                      setTimeout(fn, 50);\n}\n";
+        let candidates = anchor::candidates("widget.ts", source).expect("it parses");
+        let lines: Vec<&str> = source.split('\n').collect();
+        let target = candidates
+            .iter()
+            .find(|c| c.kind.starts_with("expression_statement"))
+            .expect("the setTimeout call");
+        let body = own_text(target, &candidates, &lines, Lang::TypeScript);
+        let said = comment_for(&lines, target.line, Lang::TypeScript);
+        let alone = rank(target, &body, &said, 0, false);
+        let already = rank(target, &body, &said, 0, true);
+        assert!(alone.score > 0, "{:?}", alone);
+        assert_eq!(already.score, alone.score - 3);
     }
 
     #[test]

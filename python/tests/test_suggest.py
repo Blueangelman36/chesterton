@@ -31,12 +31,12 @@ def statement(source, text, path="app.py"):
     raise AssertionError(f"no statement starting {text!r}")
 
 
-def rank(source, text, path="app.py", copies=0):
+def rank(source, text, path="app.py", copies=0, neighbouring=False):
     candidates = A.candidates(path, source)
     candidate = statement(source, text, path)
     lines = source.split("\n")
     return suggest.rank(candidate, suggest.own_text(candidate, candidates, lines),
-                        suggest.comment_for(lines, candidate.line), copies)
+                        suggest.comment_for(lines, candidate.line), copies, neighbouring)
 
 
 class CommentTest(unittest.TestCase):
@@ -81,6 +81,14 @@ class RankTest(unittest.TestCase):
         common = rank(SOURCE, "time.sleep", copies=6)
         self.assertEqual(common.score, alone.score - 4)
         self.assertIn("convention rather than a decision", " ".join(common.reasons))
+
+    def test_a_reason_recorded_next_door_is_discounted(self):
+        """Found by running suggest on this repository: it proposed the statement
+        wrapped around one that already had a note, for the same reason."""
+        alone = rank(SOURCE, "time.sleep")
+        already = rank(SOURCE, "time.sleep", neighbouring=True)
+        self.assertEqual(already.score, alone.score - 3)
+        self.assertIn("already recorded", " ".join(already.reasons))
 
     def test_a_test_file_is_discounted(self):
         here = rank(SOURCE, "time.sleep", path="tests/test_app.py")

@@ -152,7 +152,8 @@ def comment_for(lines: list[str], line: int) -> str:
     return " ".join(part for part in (above, trailing) if part)
 
 
-def rank(candidate: A.Candidate, body: str, comment: str, copies_elsewhere: int) -> Suggestion:
+def rank(candidate: A.Candidate, body: str, comment: str, copies_elsewhere: int,
+         neighbouring: bool = False) -> Suggestion:
     """Score one statement. Every clause is a count, not an opinion.
 
     `body` is the statement's own text, from own_text: what it says itself rather
@@ -199,6 +200,10 @@ def rank(candidate: A.Candidate, body: str, comment: str, copies_elsewhere: int)
         found.score -= 4
         found.reasons.append(f"written the same way in {copies_elsewhere} other places, so it is "
                              "a convention rather than a decision")
+    if neighbouring:
+        found.score -= 3
+        found.reasons.append("a reason is already recorded for the statement just inside or "
+                             "around this one")
     if TEST_PATH.search(candidate.path):
         found.score -= 2
         found.reasons.append("a test, where a value is often arbitrary on purpose")
@@ -217,12 +222,19 @@ def collect(index: A.Index, paths: list[str], taken: set[tuple[str, int]],
             continue
         source = index.reader.read(path)
         lines = source.split("\n") if source else []
+        here = [span for span in taken if span[0] == path]
         for candidate in candidates:
-            if (path, candidate.line) in taken:
+            span = (candidate.line, candidate.end_line)
+            if any((start, end) == span for _, start, end in here):
                 continue
+            # A reason recorded on the statement inside this one is the same
+            # reason. Discounted rather than hidden, in case this one has its own.
+            neighbouring = any(candidate.line <= start and candidate.end_line >= end
+                               or start <= candidate.line and end >= candidate.end_line
+                               for _, start, end in here)
             elsewhere, _ = index.copies_elsewhere(path, candidate.exact, candidate.shape)
             scored = rank(candidate, own_text(candidate, candidates, lines),
-                          comment_for(lines, candidate.line), elsewhere)
+                          comment_for(lines, candidate.line), elsewhere, neighbouring)
             if scored.score > 0:
                 found.append(scored)
     found.sort(key=lambda s: (-s.score, s.path, s.line))

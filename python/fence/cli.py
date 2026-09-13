@@ -261,7 +261,7 @@ def cmd_suggest(args) -> int:
     for note in Store(root).notes():
         found = A.locate(note["anchor"], index).candidate
         if found:
-            taken.add((found.path, found.line))
+            taken.add((found.path, found.line, found.end_line))
 
     paths = [p for p in WorktreeReader(root).paths() if p.endswith(".py")]
     if args.path:

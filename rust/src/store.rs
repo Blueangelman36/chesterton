@@ -3,6 +3,7 @@
 //! The format is specified in docs/FORMAT.md and shared with the Python
 //! implementation: a note written by either must be readable by the other.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 

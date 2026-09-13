@@ -1,0 +1,29 @@
+name: Windows binary
+
+# tree-sitter compiles C, and the author's machine has no MSVC linker, so the
+# binary that runs there is built here instead.
+#
+#   gh workflow run windows-binary.yml
+#   gh run download <run-id> --name fence-windows
+#
+# Nothing publishes it: this is for trying the tool on a real repository.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build fence.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: cargo --version
+      - name: Build the release binary
+        run: cargo build --release
+        working-directory: rust
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fence-windows
+          path: rust/target/release/fence.exe
+          if-no-files-found: error

@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use tree_sitter::{Node, Parser, Tree};
 
-/// This implementation's fingerprint scheme. Anchors written by the Python one
-/// carry version 1, and their hashes are not comparable with these.
-pub const ANCHOR_VERSION: u32 = 4;
+/// This implementation's fingerprint scheme, from the registry in docs/FORMAT.md.
+/// Anything that changes a hash changes this: 4 read .js with the TSX grammar,
+/// and switching grammars moved a fifth of the fingerprints in a real project.
+pub const ANCHOR_VERSION: u32 = 5;
 pub const MIN_DISTINCTIVE_TOKENS: usize = 12;
 pub const CHANGED_THRESHOLD: f64 = 0.5;
 const SNIPPET_LINES: usize = 12;
@@ -87,6 +88,7 @@ enum Key {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
     Python,
+    JavaScript,
     TypeScript,
     Tsx,
 }
@@ -104,10 +106,17 @@ impl Lang {
                 return Some(Lang::TypeScript);
             }
         }
-        // JSX lives in .js as often as in .jsx, and the TSX grammar reads both.
-        for suffix in [".tsx", ".jsx", ".js", ".mjs", ".cjs"] {
+        if lower.ends_with(".tsx") {
+            return Some(Lang::Tsx);
+        }
+        // Not the TSX grammar, although it looks like a superset: it fails on
+        // `i < unique.length`, because `unique`, `keyof` and `infer` are type
+        // operators there, and one such line wrote off the whole file. The
+        // JavaScript grammar reads JSX too, so .js loses nothing. (Both TypeScript
+        // grammars fail the same way on real TypeScript; that one is upstream.)
+        for suffix in [".js", ".jsx", ".mjs", ".cjs"] {
             if lower.ends_with(suffix) {
-                return Some(Lang::Tsx);
+                return Some(Lang::JavaScript);
             }
         }
         None
@@ -116,6 +125,7 @@ impl Lang {
     fn grammar(self) -> tree_sitter::Language {
         match self {
             Lang::Python => tree_sitter_python::LANGUAGE.into(),
+            Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
         }

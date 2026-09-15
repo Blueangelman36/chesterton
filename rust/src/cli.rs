@@ -711,7 +711,7 @@ fn hints(results: &[(Note, Match)], staged: bool) -> Vec<String> {
     }
     if seen(How::Foreign) {
         hints.push(
-            "written by another build:    fence update re-pins them here (docs/FORMAT.md)"
+            "older scheme or other build: fence update re-pins them here (docs/FORMAT.md)"
                 .to_string(),
         );
     }
@@ -759,7 +759,7 @@ fn describe(note: &Note, located: &Match) -> String {
                 .to_string(),
         ),
         How::Foreign => lines.push(format!(
-            "    written by another implementation (anchor version {}), so its fingerprints mean nothing here",
+            "    written under anchor scheme {}, which this build does not compare: another implementation, or an older version of this one",
             note.anchor.version
         )),
         How::Unparseable => lines.push(format!(
@@ -806,7 +806,7 @@ fn label(how: &How) -> &'static str {
         How::Moved => "moved",
         How::Changed => "changed",
         How::Ambiguous => "ambiguous",
-        How::Foreign => "other tool",
+        How::Foreign => "other scheme",
         How::Removed => "REMOVED",
         How::Unparseable => "skipped",
     }

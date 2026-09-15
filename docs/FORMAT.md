@@ -87,7 +87,8 @@ the scheme that wrote it, not the program that was running:
 | 1 | Python `ast`, first scheme. Retired |
 | 2 | tree-sitter, first scheme. Retired |
 | 3 | Python `ast`, value names and attribute names numbered separately |
-| 4 | tree-sitter, the same |
+| 4 | tree-sitter, the same. Retired |
+| 5 | tree-sitter, with `.js`, `.jsx`, `.mjs` and `.cjs` read by the JavaScript grammar instead of TSX |
 
 Schemes 1 and 2 shared one namespace between value names and attribute names.
 Renaming a variable in real code leaves attributes spelled as they were, so in a
@@ -95,6 +96,15 @@ file where a name is also an attribute — `Error` alongside `Generic.Error`, wh
 is ordinary in generated or table-driven code — every attribute's number shifted
 and an ordinary rename read as a deletion. The conformance suite now carries that
 case; it was found by running the stress harness over a real project.
+
+Scheme 4 read JavaScript with the TSX grammar, which cannot read a file where a
+variable named `unique`, `keyof` or `infer` follows a `<` — so one loop over
+`unique.length` made a whole file unreachable. The JavaScript grammar names some
+nodes differently (a parameter is not wrapped in `required_parameter`, for one),
+and on a real 58-file project that moved 882 of 3,948 fingerprints. Keeping the
+old number would have turned 6 of that project's 11 notes into one false
+`removed` and five false `changed`; under a new number they read as `foreign`
+until `fence update` re-pins them, which is what the number is for.
 
 **A note carries one anchor per scheme**, which is how two implementations share
 a repository. `anchors` maps a version to its anchor:

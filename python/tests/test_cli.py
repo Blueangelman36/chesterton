@@ -198,7 +198,7 @@ class CliTest(unittest.TestCase):
 
         code, out = self.fence("check")
         self.assertEqual(code, 0, out)
-        self.assertIn("other tool", out)
+        self.assertIn("other scheme", out)
 
         self.fence("update")
         kept = json.loads(stored.read_text(encoding="utf-8"))["anchors"]

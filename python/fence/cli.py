@@ -24,7 +24,7 @@ LABELS = {
     "moved": "moved",
     "changed": "changed",
     "ambiguous": "ambiguous",
-    "foreign": "other tool",
+    "foreign": "other scheme",
     "removed": "REMOVED",
     "unparseable": "skipped",
 }
@@ -432,8 +432,8 @@ def _describe(note: dict, m: A.Match) -> list[str]:
         lines.append("    an identical copy of this statement was removed; "
                      "can't tell which one this note is about")
     elif m.how == "foreign":
-        lines.append(f"    written by another implementation (anchor version {a.get('version')}), "
-                     "so its fingerprints mean nothing here")
+        lines.append(f"    written under anchor scheme {a.get('version')}, which this build does not compare: "
+                     "another implementation, or an older version of this one")
     elif m.how == "unparseable":
         lines.append(f"    {a['path']} doesn't parse right now, so this note wasn't checked")
     return lines
@@ -451,7 +451,7 @@ def _hints(counts: Counter, staged: bool) -> list[str]:
     if counts["renamed"] or counts["moved"]:
         hints.append("follow code that moved:      fence update")
     if counts["foreign"]:
-        hints.append("written by another build:    fence update re-pins them here (docs/FORMAT.md)")
+        hints.append("older scheme or other build: fence update re-pins them here (docs/FORMAT.md)")
     return hints
 
 

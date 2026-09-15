@@ -188,7 +188,7 @@ fn a_note_from_another_build_is_adopted_rather_than_taken_over() {
 
     let (code, out) = repo.fence(&["check"]);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("other tool"), "{out}");
+    assert!(out.contains("other scheme"), "{out}");
 
     let (code, out) = repo.fence(&["update"]);
     assert_eq!(code, 0, "{out}");

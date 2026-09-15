@@ -1,0 +1,100 @@
+# The same questions, asked of JavaScript. An implementation that cannot read
+# this language skips these cases.
+#
+# JavaScript is not TypeScript with the types left out, as far as a parser is
+# concerned. The first case is a file that a TypeScript grammar cannot read at
+# all; it was found in a real project, where a loop over a variable named
+# `unique` made every note in the file unreachable.
+
+[[case]]
+name = "a variable named like a type operator does not make the file unreadable"
+language = "javascript"
+expect = "ok"
+anchor_match = "if (batch.length === 0"
+
+[case.before]
+"scout.js" = '''
+export async function scout(ids) {
+  const unique = [...new Set(ids)];
+  const keyof = Object.keys;
+  const infer = (row) => row.kind ?? "unknown";
+  for (let i = 0; i < unique.length; i += 25) {
+    const batch = unique.slice(i, i + 25);
+    if (batch.length === 0 || i < keyof(batch).length - infer.length) {
+      continue;
+    }
+    await fetchBatch(batch);
+  }
+}
+'''
+
+[case.after]
+"scout.js" = '''
+export async function scout(ids) {
+  const unique = [...new Set(ids)];
+  const keyof = Object.keys;
+  const infer = (row) => row.kind ?? "unknown";
+  for (let i = 0; i < unique.length; i += 25) {
+    const batch = unique.slice(i, i + 25);
+    if (batch.length === 0 || i < keyof(batch).length - infer.length) {
+      continue;
+    }
+    await fetchBatch(batch);
+  }
+}
+'''
+
+
+[[case]]
+name = "JSX in a .js file is still read"
+language = "javascript"
+expect = "ok"
+anchor_match = "if (!session.user"
+
+[case.before]
+"Account.js" = '''
+export function Account({ session }) {
+  if (!session.user || session.user.expiresAt < Date.now()) {
+    return <Redirect to="/login" reason="expired" />;
+  }
+  return <Profile user={session.user} />;
+}
+'''
+
+[case.after]
+"Account.js" = '''
+export function Account({ session }) {
+  // Checked again here because the router caches the last good session.
+  if (!session.user || session.user.expiresAt < Date.now()) {
+    return <Redirect to="/login" reason="expired" />;
+  }
+  return <Profile user={session.user} />;
+}
+'''
+
+
+[[case]]
+name = "a consistent rename is followed"
+language = "javascript"
+expect = "renamed"
+anchor_match = "if (!session.user"
+
+[case.before]
+"Account.js" = '''
+export function Account({ session }) {
+  if (!session.user || session.user.expiresAt < Date.now()) {
+    return <Redirect to="/login" reason="expired" />;
+  }
+  return <Profile user={session.user} />;
+}
+'''
+
+[case.after]
+"Account.js" = '''
+export function Account({ auth }) {
+  if (!auth.user || auth.user.expiresAt < Date.now()) {
+    return <Redirect to="/login" reason="expired" />;
+  }
+  return <Profile user={auth.user} />;
+}
+'''

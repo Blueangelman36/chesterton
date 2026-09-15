@@ -250,6 +250,12 @@ This is a prototype of the core loop: anchoring plus the hook.
   implementation also reads TypeScript, TSX and JavaScript, and everything language-specific there
   is four questions in one place: what holds statements, what introduces a scope, which names are
   attributes rather than values, and what counts as a leaf. Another language is answering those.
+- **A TypeScript file that uses `unique`, `keyof` or `infer` as a variable cannot be read.** Those
+  are type operators, and the tree-sitter TypeScript grammars fail on `i < unique.length` even
+  though it is valid TypeScript — and one failure writes off the whole file, so every note in it
+  reads as `unparseable`. JavaScript is not affected: `.js` files are read by the JavaScript
+  grammar, which is why anchor scheme 5 exists (see `docs/FORMAT.md`). Upgrading from a build that
+  wrote scheme 4 shows its notes as `foreign` until one `fence update`.
 - **Heavily edited short statements** can read as `removed` rather than `changed`. It errs toward
   speaking up; `fence reanchor` fixes it.
 - **Notes on large blocks are large**, because the anchor stores the block's token list. A note is
@@ -280,8 +286,9 @@ This is a prototype of the core loop: anchoring plus the hook.
 2. **Both implementations can share a repository.** A note carries one anchor per scheme, each
    build reads and rewrites only its own, and `fence update` on a note another build wrote *adds*
    an anchor beside theirs rather than replacing it. Run `update` once from each and both find
-   what they wrote. Until then, the other build's notes read as `other tool`, which warns and
-   never blocks.
+   what they wrote. Until then, the other build's notes read as `other scheme`, which warns and
+   never blocks. Upgrading to a build with a new scheme looks the same, and `update` fixes it the
+   same way.
 3. **Other languages.** The Rust side already parses with tree-sitter, so a new language is
    mostly a grammar plus its statement and scope rules — and a set of conformance cases.
 4. **Make it fast on large repositories**, per Status above.
@@ -292,7 +299,7 @@ This is a prototype of the core loop: anchoring plus the hook.
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
-| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python and TypeScript |
+| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python, JavaScript and TypeScript |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
 | `docs/BUILDING.md` | Building the Rust implementation, and the three ways that goes wrong on Windows |

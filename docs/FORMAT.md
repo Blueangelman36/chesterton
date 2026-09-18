@@ -90,6 +90,21 @@ the scheme that wrote it, not the program that was running:
 | 4 | tree-sitter, the same. Retired |
 | 5 | tree-sitter, with `.js`, `.jsx`, `.mjs` and `.cjs` read by the JavaScript grammar instead of TSX |
 
+Kotlin (`.kt`, `.kts`) was added under scheme 5 rather than taking a number of its
+own. A number exists to say *these fingerprints moved*; adding a language moves
+none. Every Python, JavaScript and TypeScript statement hashes to exactly what it
+did before, and `.kt` had no anchors to invalidate because no build could read it.
+
+A build without the Kotlin grammar cannot parse a `.kt` file at all, so it
+declines to judge the note rather than guessing: the verdict is `unparseable`,
+which the Python implementation prints as `skipped`. It warns and never blocks,
+which is the behaviour that matters — an implementation that cannot read a
+language must not claim that code in it has been deleted.
+
+Measured, not assumed: a Python note written under scheme 5 reads as
+`other scheme` in the scheme-3 Python build, and a Kotlin note in the same
+repository reads as `skipped`. Neither blocks a commit.
+
 Schemes 1 and 2 shared one namespace between value names and attribute names.
 Renaming a variable in real code leaves attributes spelled as they were, so in a
 file where a name is also an attribute — `Error` alongside `Generic.Error`, which

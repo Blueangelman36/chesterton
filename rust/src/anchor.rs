@@ -91,6 +91,7 @@ pub enum Lang {
     JavaScript,
     TypeScript,
     Tsx,
+    Kotlin,
 }
 
 impl Lang {
@@ -99,6 +100,14 @@ impl Lang {
         for suffix in [".py", ".pyi"] {
             if lower.ends_with(suffix) {
                 return Some(Lang::Python);
+            }
+        }
+        // `.kts` does not collide with `.ts`: the dot is part of the suffix, so
+        // "build.gradle.kts" ends with "kts", not ".ts". Gradle build files are
+        // Kotlin, and are exactly where a project's load-bearing oddities live.
+        for suffix in [".kt", ".kts"] {
+            if lower.ends_with(suffix) {
+                return Some(Lang::Kotlin);
             }
         }
         for suffix in [".ts", ".mts", ".cts"] {
@@ -128,6 +137,7 @@ impl Lang {
             Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            Lang::Kotlin => tree_sitter_kotlin_ng::LANGUAGE.into(),
         }
     }
 
@@ -135,6 +145,21 @@ impl Lang {
     fn holds_statements(self, kind: &str) -> bool {
         match self {
             Lang::Python => matches!(kind, "block" | "module"),
+            // `enum_class_body` is not only enums: this grammar uses it for an
+            // interface body too, so leaving it out would make every method of
+            // an interface unanchorable.
+            Lang::Kotlin => matches!(
+                kind,
+                "source_file"
+                    | "block"
+                    | "class_body"
+                    | "enum_class_body"
+                    // A trailing lambda holds its statements directly, and is
+                    // where Compose UI and every Gradle build file keep theirs.
+                    // Without this a `Column { ... }` body is one candidate and
+                    // nothing drawn inside it can be anchored.
+                    | "lambda_literal"
+            ),
             _ => matches!(
                 kind,
                 "program" | "statement_block" | "class_body" | "switch_case" | "switch_default"
@@ -142,10 +167,24 @@ impl Lang {
         }
     }
 
+    /// Named children of a container that are not statements, and would
+    /// otherwise be indexed as though they were.
+    fn not_a_statement(self, kind: &str) -> bool {
+        match self {
+            // `{ p -> ... }` puts the parameter list inside the lambda body,
+            // next to the statements rather than on the lambda itself.
+            Lang::Kotlin => kind == "lambda_parameters",
+            _ => false,
+        }
+    }
+
     /// A leaf in spirit: descending into a string would compare its pieces.
     fn is_atom(self, kind: &str) -> bool {
         match self {
             Lang::Python => kind == "string",
+            // A Kotlin string carries its interpolations as children, so without
+            // this a rename inside "tick $i" would read as a structural change.
+            Lang::Kotlin => matches!(kind, "string_literal" | "character_literal"),
             _ => matches!(kind, "string" | "template_string"),
         }
     }
@@ -153,6 +192,7 @@ impl Lang {
     fn is_identifier(self, kind: &str) -> bool {
         match self {
             Lang::Python => kind == "identifier",
+            Lang::Kotlin => kind == "identifier",
             _ => matches!(
                 kind,
                 "identifier"
@@ -166,11 +206,33 @@ impl Lang {
 
     /// A property name is an attribute wherever it turns up, not only after a dot.
     fn identifier_is_attribute(self, kind: &str) -> bool {
-        self != Lang::Python && kind == "property_identifier"
+        match self {
+            // Kotlin spells a member access with the same `identifier` node as a
+            // local, so no kind is always an attribute. Which side of the dot a
+            // name sits on is decided in `attribute_child` instead.
+            Lang::Python | Lang::Kotlin => false,
+            _ => kind == "property_identifier",
+        }
     }
 
     /// The child holding a name in the attribute namespace rather than the value one.
     fn attribute_child(self, node: Node) -> Option<usize> {
+        // Kotlin names no fields on a navigation, so it is answered positionally
+        // rather than by field, and returns early.
+        if self == Lang::Kotlin {
+            if node.kind() != "navigation_expression" {
+                return None;
+            }
+            // `a.b`, `a?.b`, `a::b` and `a!!.b` are all this one node with the
+            // receiver first and the name last, so the last named child is the
+            // attribute. Without this the name after the dot is numbered as a
+            // value, and renaming an unrelated local shifts it.
+            let count = node.named_child_count();
+            if count < 2 {
+                return None;
+            }
+            return node.named_child(count as u32 - 1).map(|child| child.id());
+        }
         let field = match self {
             Lang::Python if node.kind() == "attribute" => "attribute",
             Lang::Python => return None,
@@ -191,6 +253,16 @@ impl Lang {
         match self {
             Lang::Python => match node.kind() {
                 "function_definition" | "class_definition" => named(node),
+                _ => None,
+            },
+            Lang::Kotlin => match node.kind() {
+                // `interface` and `enum class` are both `class_declaration` here.
+                "function_declaration" | "class_declaration" | "object_declaration" => named(node),
+                // A companion object has no name in the grammar, but Kotlin
+                // addresses its members through one. Without a scope of its own
+                // its members would sit in the enclosing class's, where they
+                // could collide with instance members spelled the same way.
+                "companion_object" => Some("Companion".to_string()),
                 _ => None,
             },
             _ => match node.kind() {
@@ -440,7 +512,7 @@ fn walk(
         if child.kind() == "comment" {
             continue;
         }
-        if container {
+        if container && !lang.not_a_statement(child.kind()) {
             out.push(candidate(lang, child, path, source, lines, scope));
         }
         let inner = match lang.scope_name(child, source) {

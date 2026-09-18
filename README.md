@@ -247,9 +247,17 @@ This is a prototype of the core loop: anchoring plus the hook.
 
 - **The reference implementation reads Python only**, using the standard library `ast` and
   `tokenize` modules — which is why it installs with no dependencies at all. The Rust
-  implementation also reads TypeScript, TSX and JavaScript, and everything language-specific there
-  is four questions in one place: what holds statements, what introduces a scope, which names are
-  attributes rather than values, and what counts as a leaf. Another language is answering those.
+  implementation also reads Kotlin, TypeScript, TSX and JavaScript, and everything
+  language-specific there is four questions in one place: what holds statements, what introduces a
+  scope, which names are attributes rather than values, and what counts as a leaf. Another
+  language is answering those. A `.kt` note checked by a build without the Kotlin grammar is
+  reported `skipped` rather than judged, which warns and never blocks.
+- **A Kotlin class body written entirely on one line cannot be read.** `class A { init { ... } }`
+  on a single line fails in the tree-sitter Kotlin grammar, and one failure writes off the whole
+  file. Every one of those constructs parses when written across lines, which is how ktlint and
+  the IDE format them, so in practice this shows up in hand-written one-liners rather than in
+  normal code. Property delegation, custom getters, `companion object`, sealed hierarchies,
+  interfaces, `object :` expressions and Compose lambdas all read correctly multi-line.
 - **A TypeScript file that uses `unique`, `keyof` or `infer` as a variable cannot be read.** Those
   are type operators, and the tree-sitter TypeScript grammars fail on `i < unique.length` even
   though it is valid TypeScript — and one failure writes off the whole file, so every note in it
@@ -290,7 +298,8 @@ This is a prototype of the core loop: anchoring plus the hook.
    never blocks. Upgrading to a build with a new scheme looks the same, and `update` fixes it the
    same way.
 3. **Other languages.** The Rust side already parses with tree-sitter, so a new language is
-   mostly a grammar plus its statement and scope rules — and a set of conformance cases.
+   mostly a grammar plus its statement and scope rules — and a set of conformance cases. Kotlin
+   was added that way and needed no change to how anchoring works; see `conformance/cases/kotlin.toml`.
 4. **Make it fast on large repositories**, per Status above.
 5. **Surface notes where people are:** a PR check, and an editor hint on hover.
 
@@ -299,7 +308,7 @@ This is a prototype of the core loop: anchoring plus the hook.
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
-| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python, JavaScript and TypeScript |
+| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python, JavaScript, TypeScript and Kotlin |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
 | `docs/BUILDING.md` | Building the Rust implementation, and the three ways that goes wrong on Windows |

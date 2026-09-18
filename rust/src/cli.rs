@@ -882,9 +882,20 @@ fn under(path: &str, target: &str) -> bool {
 
 fn hook_command() -> Result<String, Error> {
     let exe = std::env::current_exe()?;
+    let path = exe.display().to_string().replace('\\', "/");
+    // Guarded, because the hook records an absolute path to a binary that lives
+    // outside the repository. If it is moved, renamed or built somewhere else,
+    // an unguarded `"$FENCE" check || exit 1` fails to start and takes every
+    // commit in the repository down with it, reporting only "No such file or
+    // directory". Nobody's commit should be blocked by fence being absent --
+    // fence exists to speak up about deletions, not to hold the repo hostage.
     Ok(format!(
-        "\"{}\" check --staged || exit 1",
-        exe.display().to_string().replace('\\', "/")
+        "FENCE=\"{path}\"\n\
+         if [ ! -x \"$FENCE\" ]; then\n\
+         \x20 echo \"fence: $FENCE is missing; skipping the check. Run 'fence init' to repoint it.\" >&2\n\
+         \x20 exit 0\n\
+         fi\n\
+         \"$FENCE\" check --staged || exit 1"
     ))
 }
 

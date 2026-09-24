@@ -103,6 +103,28 @@ Where a comment already explains, it is offered as a draft to edit. Where nothin
 `--from-blame` is offered instead, because the commit that wrote the line usually said why. It
 proposes nothing it cannot support, in the same way asof says `NAME` rather than inventing one.
 
+## In CI
+
+The hook only runs where someone installed it. CI runs for everyone:
+
+```yaml
+- uses: actions/checkout@v7
+- uses: Blueangelman36/chesterton@<tag or full commit>
+  with:
+    implementation: rust   # or python: the build your notes were written with
+```
+
+It runs `fence check --strict`, so it fails on a removed statement *and* on notes it
+could not compare. The second half matters more than it sounds. Each build writes its
+own anchor scheme, and a build that does not read yours reports every note as
+`other scheme`, which never blocks. A project that tracked this repository's `main`
+picked up a new scheme that way and stayed green for a week while guarding nothing —
+so pin the action, and let `--strict` catch the day a pin moves.
+
+The Rust build is compiled on first use and cached, keyed on its sources. Each tagged
+release also attaches ready-made `fence` binaries for Linux, macOS and Windows, so
+trying it does not need a C compiler.
+
 ## For coding agents
 
 An agent editing a file it did not write is in exactly the position this tool exists for: it can

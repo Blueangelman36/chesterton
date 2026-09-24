@@ -56,6 +56,16 @@ git push origin v0.1.0
 
 Then watch the run. The `publish` job waits on the `pypi` environment.
 
+## What a tag produces
+
+Two things, independently, so one failing does not hold up the other:
+
+- **PyPI** — the Python package, once the one-time setup above is done. Until then this
+  job fails and nothing else is affected.
+- **A GitHub release** with `fence` binaries for Linux (x86_64), macOS (arm64) and
+  Windows (x86_64), plus `SHA256SUMS`. Each platform runs `cargo test` before its binary
+  is built. No setup needed.
+
 ## Afterwards
 
 ```bash

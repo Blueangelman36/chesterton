@@ -16,13 +16,13 @@ jobs:
     name: build fence.exe
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Toolchain
         run: cargo --version
       - name: Build the release binary
         run: cargo build --release
         working-directory: rust
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: fence-windows
           path: rust/target/release/fence.exe

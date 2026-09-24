@@ -202,6 +202,37 @@ fn a_note_from_another_build_is_adopted_rather_than_taken_over() {
 }
 
 #[test]
+fn strict_fails_when_no_note_could_be_compared() {
+    let repo = Repo::new("strict");
+    let id = record(&repo);
+    let stored = repo.dir.join(".fence").join("notes").join(format!("{id}.json"));
+    let mut written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&stored).unwrap()).unwrap();
+    let mut theirs = written["anchors"].as_object().unwrap().values().next().unwrap().clone();
+    theirs["version"] = serde_json::json!(99);
+    theirs["exact"] = serde_json::json!("x");
+    theirs["shape"] = serde_json::json!("x");
+    written["anchors"] = serde_json::json!({ "99": theirs });
+    std::fs::write(&stored, serde_json::to_string_pretty(&written).unwrap()).unwrap();
+
+    let (code, out) = repo.fence(&["check"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("nothing is being guarded"), "{out}");
+
+    let (code, out) = repo.fence(&["check", "--strict"]);
+    assert_eq!(code, 1, "{out}");
+    let (code, out) = repo.fence(&["check", "--strict", "--json"]);
+    assert_eq!(code, 1, "{out}");
+    let payload: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(payload["uncompared"], serde_json::json!(1));
+    assert_eq!(payload["blocked"], serde_json::json!(true));
+
+    repo.fence(&["update"]);
+    let (code, out) = repo.fence(&["check", "--strict"]);
+    assert_eq!(code, 0, "{out}");
+}
+
+#[test]
 fn suggest_finds_a_typescript_statement_worth_recording() {
     let repo = Repo::new("suggest");
     repo.write(

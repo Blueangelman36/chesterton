@@ -484,17 +484,29 @@ fn cmd_check(args: &Args) -> Result<i32, Error> {
     };
 
     let removed = results.iter().filter(|(_, m)| m.how == How::Removed).count();
+    // A note this build could not compare is a note nobody is checking. Fine for
+    // one note in a mixed repository; a silent outage when it is all of them. A
+    // new anchor scheme once turned every note in a downstream project into
+    // `other scheme`, and its CI stayed green guarding nothing. --strict is for
+    // CI: anything not compared fails the run.
+    let uncompared = results
+        .iter()
+        .filter(|(_, m)| matches!(m.how, How::Foreign | How::Unparseable))
+        .count();
+    let strict = args.has("strict");
+    let blocked = removed > 0 || (strict && uncompared > 0);
     if args.has("json") {
         let notes: Vec<serde_json::Value> =
             results.iter().map(|(note, m)| as_json(note, m)).collect();
         let payload = json!({
             "checked": results.len(),
             "counts": counts(&results),
-            "blocked": removed > 0,
+            "uncompared": uncompared,
+            "blocked": blocked,
             "notes": notes,
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap_or_default());
-        return Ok(if removed > 0 { 1 } else { 0 });
+        return Ok(if blocked { 1 } else { 0 });
     }
 
     let shown: Vec<&(Note, Match)> = results
@@ -519,7 +531,17 @@ fn cmd_check(args: &Args) -> Result<i32, Error> {
             println!("  {hint}");
         }
     }
-    Ok(if removed > 0 { 1 } else { 0 })
+    if !results.is_empty() && uncompared == results.len() {
+        println!(
+            "fence: none of the {} note(s) could be compared by this build, so nothing is \
+             being guarded. Run `fence update`.",
+            results.len()
+        );
+    }
+    if strict && uncompared > 0 {
+        println!("fence: --strict: {uncompared} note(s) were not compared.");
+    }
+    Ok(if blocked { 1 } else { 0 })
 }
 
 fn cmd_update(_args: &Args) -> Result<i32, Error> {

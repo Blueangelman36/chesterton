@@ -206,6 +206,30 @@ class CliTest(unittest.TestCase):
         self.assertIn(str(A.ANCHOR_VERSION), kept)
         self.assertIn("[ok]", self.fence("check")[1])
 
+    def test_strict_fails_when_no_note_could_be_compared(self):
+        """Every note in another scheme is a check guarding nothing. Plain check
+        says so and passes; --strict, for CI, fails."""
+        stored = self.repo / ".fence" / "notes" / f"{self.note['id']}.json"
+        written = json.loads(stored.read_text(encoding="utf-8"))
+        ours = written["anchors"][str(A.ANCHOR_VERSION)]
+        written["anchors"] = {"99": dict(ours, version=99, exact="x", shape="x")}
+        stored.write_text(json.dumps(written, indent=2), encoding="utf-8")
+
+        code, out = self.fence("check")
+        self.assertEqual(code, 0, out)
+        self.assertIn("nothing is being guarded", out)
+
+        code, out = self.fence("check", "--strict")
+        self.assertEqual(code, 1, out)
+        code, out = self.fence("check", "--strict", "--json")
+        self.assertEqual(code, 1, out)
+        payload = json.loads(out)
+        self.assertEqual(payload["uncompared"], 1)
+        self.assertTrue(payload["blocked"])
+
+        self.fence("update")
+        self.assertEqual(self.fence("check", "--strict")[0], 0)
+
     def test_init_leaves_an_explanation_for_whoever_finds_the_directory(self):
         readme = self.repo / ".fence" / "README.md"
         self.assertTrue(readme.is_file())

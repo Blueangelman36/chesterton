@@ -66,7 +66,7 @@ fence: 1559744b now follows client.py:4  in Client.fetch
 | `fence suggest [PATH]` | Statements whose reason is probably not written down, worst first. `--why` for every signal, `--json` for tooling |
 | `fence add FILE:LINE[-END] -m "why"` | Record why a statement exists. `--from-blame` borrows the message of the commit that wrote the line; `--source` records a link or ticket |
 | `fence list [PATH]` | List notes |
-| `fence check [--staged]` | Find each note's code and report what happened to it. `--staged` is what the hook runs: staged files only |
+| `fence check [--staged] [--strict]` | Find each note's code and report what happened to it. `--staged` is what the hook runs: staged files only. `--strict` is for CI: it also fails when a note could not be compared at all (written by another build or scheme, or its file does not parse), which otherwise only warns |
 | `fence update` | Re-pin notes whose code was renamed or moved |
 | `fence confirm ID` | The code changed, but the reason still holds |
 | `fence reanchor ID FILE:LINE` | Point a note at different code |

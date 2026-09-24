@@ -330,27 +330,39 @@ def cmd_check(args) -> int:
         index = _worktree_index(root)
 
     results = [(n, A.locate(n["anchor"], index)) for n in notes]
+    counts = Counter(m.how for _, m in results)
+    # A note this build could not compare is a note nobody is checking. That is
+    # fine for one note in a mixed repository and a silent outage when it is all
+    # of them -- a new anchor scheme once turned every note in a downstream
+    # project into `other scheme`, and its CI stayed green guarding nothing.
+    # --strict is for CI: anything not compared fails the run.
+    uncompared = counts["foreign"] + counts["unparseable"]
+    blocked = bool(counts["removed"]) or (args.strict and uncompared > 0)
     if args.json:
-        counted = Counter(m.how for _, m in results)
         print(json.dumps({
             "checked": len(results),
-            "counts": {k: counted[k] for k in LABELS if counted[k]},
-            "blocked": bool(counted["removed"]),
+            "counts": {k: counts[k] for k in LABELS if counts[k]},
+            "uncompared": uncompared,
+            "blocked": blocked,
             "notes": [_as_json(n, m) for n, m in results],
         }, indent=2))
-        return 1 if counted["removed"] else 0
+        return 1 if blocked else 0
 
     shown = [(n, m) for n, m in results if not (args.staged and m.how == "ok")]
     for note, m in shown:
         print("\n".join(_describe(note, m)))
 
-    counts = Counter(m.how for _, m in results)
     if not args.staged or shown:
         tally = ", ".join(f"{counts[k]} {LABELS[k]}" for k in LABELS if counts[k])
         print(f"\nfence: {len(results)} note(s) checked" + (f": {tally}" if tally else ""))
         for hint in _hints(counts, args.staged):
             print(f"  {hint}")
-    return 1 if counts["removed"] else 0
+    if results and uncompared == len(results):
+        print(f"fence: none of the {len(results)} note(s) could be compared by this build, "
+              "so nothing is being guarded. Run `fence update`.")
+    if args.strict and uncompared:
+        print(f"fence: --strict: {uncompared} note(s) were not compared.")
+    return 1 if blocked else 0
 
 
 def cmd_update(args) -> int:
@@ -666,6 +678,9 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("check", help="find each note's code and report what happened to it")
     s.add_argument("--staged", action="store_true",
                    help="check staged files only (what the pre-commit hook runs)")
+    s.add_argument("--strict", action="store_true",
+                   help="also fail when a note could not be compared (other scheme, "
+                        "unparseable file); for CI")
     s.add_argument("--json", action="store_true", help="machine-readable output")
     s.set_defaults(run=cmd_check)
 

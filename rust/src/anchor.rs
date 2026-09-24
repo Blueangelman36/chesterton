@@ -92,6 +92,7 @@ pub enum Lang {
     TypeScript,
     Tsx,
     Kotlin,
+    Rust,
 }
 
 impl Lang {
@@ -109,6 +110,9 @@ impl Lang {
             if lower.ends_with(suffix) {
                 return Some(Lang::Kotlin);
             }
+        }
+        if lower.ends_with(".rs") {
+            return Some(Lang::Rust);
         }
         for suffix in [".ts", ".mts", ".cts"] {
             if lower.ends_with(suffix) {
@@ -138,6 +142,7 @@ impl Lang {
             Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
             Lang::Kotlin => tree_sitter_kotlin_ng::LANGUAGE.into(),
+            Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
         }
     }
 
@@ -160,6 +165,20 @@ impl Lang {
                     // nothing drawn inside it can be anchored.
                     | "lambda_literal"
             ),
+            Lang::Rust => matches!(
+                kind,
+                "source_file"
+                    | "block"
+                    // The body of an `impl`, a `trait` or a `mod`.
+                    | "declaration_list"
+                    // Each arm of a match is its own decision, and a guard arm
+                    // that looks unreachable is the classic thing to delete.
+                    | "match_block"
+                    // Struct fields and enum variants: a field's type or a
+                    // variant's order is often the load-bearing choice.
+                    | "field_declaration_list"
+                    | "enum_variant_list"
+            ),
             _ => matches!(
                 kind,
                 "program" | "statement_block" | "class_body" | "switch_case" | "switch_default"
@@ -174,7 +193,17 @@ impl Lang {
             // `{ p -> ... }` puts the parameter list inside the lambda body,
             // next to the statements rather than on the lambda itself.
             Lang::Kotlin => kind == "lambda_parameters",
+            Lang::Rust => false,
             _ => false,
+        }
+    }
+
+    /// Comments, which never count: they are dropped from fingerprints, and never
+    /// candidates. Rust has two kinds and calls neither `comment`.
+    fn is_comment(self, kind: &str) -> bool {
+        match self {
+            Lang::Rust => matches!(kind, "line_comment" | "block_comment"),
+            _ => kind == "comment",
         }
     }
 
@@ -185,6 +214,8 @@ impl Lang {
             // A Kotlin string carries its interpolations as children, so without
             // this a rename inside "tick $i" would read as a structural change.
             Lang::Kotlin => matches!(kind, "string_literal" | "character_literal"),
+            // Rust strings carry their escapes and content as children.
+            Lang::Rust => matches!(kind, "string_literal" | "raw_string_literal" | "char_literal"),
             _ => matches!(kind, "string" | "template_string"),
         }
     }
@@ -193,6 +224,10 @@ impl Lang {
         match self {
             Lang::Python => kind == "identifier",
             Lang::Kotlin => kind == "identifier",
+            Lang::Rust => matches!(
+                kind,
+                "identifier" | "type_identifier" | "field_identifier" | "shorthand_field_identifier"
+            ),
             _ => matches!(
                 kind,
                 "identifier"
@@ -211,6 +246,11 @@ impl Lang {
             // local, so no kind is always an attribute. Which side of the dot a
             // name sits on is decided in `attribute_child` instead.
             Lang::Python | Lang::Kotlin => false,
+            // A field is a field wherever it is named: `a.len`, `len: u32` in a
+            // struct, and `Point { len: 3 }` are the same name, and none of them
+            // is the local `len`. `Point { len }` is a local as well, and stays
+            // a value.
+            Lang::Rust => kind == "field_identifier",
             _ => kind == "property_identifier",
         }
     }
@@ -236,6 +276,8 @@ impl Lang {
         let field = match self {
             Lang::Python if node.kind() == "attribute" => "attribute",
             Lang::Python => return None,
+            Lang::Rust if node.kind() == "field_expression" => "field",
+            Lang::Rust => return None,
             _ if node.kind() == "member_expression" => "property",
             _ => return None,
         };
@@ -265,6 +307,32 @@ impl Lang {
                 "companion_object" => Some("Companion".to_string()),
                 _ => None,
             },
+            Lang::Rust => match node.kind() {
+                "function_item" | "struct_item" | "enum_item" | "union_item" | "trait_item"
+                | "mod_item" | "macro_definition" => named(node),
+                // An impl names no scope of its own; it lends one to a type. A
+                // trait impl is qualified the way Rust spells it, because
+                // `Display::fmt` and `Debug::fmt` on one type are different
+                // functions with the same name, and sharing a scope would let
+                // one stand in for the other.
+                "impl_item" => {
+                    // By the last path segment: `fmt::Display` and an imported
+                    // `Display` are one trait, and a changed `use` should not
+                    // read as every method in the impl moving.
+                    let text = |field: &str| -> Option<String> {
+                        let n = node.child_by_field_name(field)?;
+                        let t = n.utf8_text(source.as_bytes()).ok()?;
+                        let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+                        Some(last_path_segment(&t).to_string())
+                    };
+                    let ty = text("type")?;
+                    Some(match text("trait") {
+                        Some(tr) => format!("<{ty} as {tr}>"),
+                        None => ty,
+                    })
+                }
+                _ => None,
+            },
             _ => match node.kind() {
                 "function_declaration"
                 | "generator_function_declaration"
@@ -287,6 +355,28 @@ impl Lang {
             },
         }
     }
+}
+
+/// `std::fmt::Display` -> `Display`, `a::Wrapper<b::T>` -> `Wrapper<b::T>`: the
+/// last `::` outside any generic arguments.
+fn last_path_segment(path: &str) -> &str {
+    let mut depth = 0i32;
+    let mut start = 0;
+    let bytes = path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'<' => depth += 1,
+            b'>' => depth -= 1,
+            b':' if depth == 0 && bytes.get(i + 1) == Some(&b':') => {
+                start = i + 2;
+                i += 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    &path[start..]
 }
 
 /// Where an implementation gets files from: the worktree, the index, or a test.
@@ -452,6 +542,8 @@ pub fn worth_reading(path: &str, source: &str) -> bool {
         "/vendor/", "/vendored/", "/node_modules/", "/dist/", "/build/", "/third_party/",
         "/site-packages/", "/.venv/", "/migrations/", ".min.js", ".min.css", ".bundle.js",
         "-min.js", ".generated.", "_pb2.py",
+        // Cargo's and Maven's build output, when it is not gitignored.
+        "/target/",
     ];
     let lower = format!("/{}", path.to_ascii_lowercase());
     if GENERATED.iter().any(|part| lower.contains(part)) {
@@ -509,7 +601,7 @@ fn walk(
     let container = lang.holds_statements(node.kind());
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        if child.kind() == "comment" {
+        if lang.is_comment(child.kind()) {
             continue;
         }
         if container && !lang.not_a_statement(child.kind()) {
@@ -597,7 +689,7 @@ fn serialize(
     out: &mut String,
     attribute: bool,
 ) {
-    if node.kind() == "comment" {
+    if lang.is_comment(node.kind()) {
         return;
     }
     if node.child_count() == 0 || lang.is_atom(node.kind()) {
@@ -626,7 +718,7 @@ fn serialize(
 }
 
 fn collect_tokens(lang: Lang, node: Node, source: &str, out: &mut Vec<String>) {
-    if node.kind() == "comment" {
+    if lang.is_comment(node.kind()) {
         return;
     }
     if node.child_count() == 0 || lang.is_atom(node.kind()) {
@@ -855,7 +947,14 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
 /// implementation, so a short non-cryptographic digest is enough.
 #[cfg(test)]
 mod tests {
-    use super::worth_reading;
+    use super::{last_path_segment, worth_reading};
+
+    #[test]
+    fn a_rust_path_is_named_by_its_last_segment() {
+        assert_eq!(last_path_segment("std::fmt::Display"), "Display");
+        assert_eq!(last_path_segment("Display"), "Display");
+        assert_eq!(last_path_segment("a::Wrapper<b::T>"), "Wrapper<b::T>");
+    }
 
     #[test]
     fn vendored_and_minified_files_are_not_where_reasons_live() {

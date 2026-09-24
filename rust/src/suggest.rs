@@ -143,13 +143,25 @@ fn strip_markers(trimmed: &str, _lang: Lang) -> String {
     // The end of a doc comment comes off first: trimming `*` from `*/` would
     // leave a stray slash on the end of the draft.
     let mut text = trimmed.trim().trim_end_matches("*/").trim_end();
-    for marker in ["/**", "/*", "//", "*", "#"] {
+    // `///` and `//!` before `//`, or a Rust doc comment keeps a stray slash.
+    for marker in ["/**", "/*", "///", "//!", "//", "*", "#"] {
         if let Some(rest) = text.strip_prefix(marker) {
             text = rest.trim_start();
             break;
         }
     }
     text.trim().to_string()
+}
+
+/// Does the `'` just read open a char literal? In Rust it may instead be a
+/// lifetime (`'a`, `'static`), which never closes, and treating it as a quote
+/// would hide everything after it on the line — a trailing comment included.
+fn opens_char_literal<I: Iterator<Item = char>>(mut rest: I) -> bool {
+    match rest.next() {
+        Some('\\') => true,
+        Some(_) => rest.next() == Some('\''),
+        None => false,
+    }
 }
 
 /// Code only: string bodies and comments removed, line count preserved.
@@ -168,7 +180,9 @@ pub fn code_only(text: &str, lang: Lang) -> String {
                     }
                 }
                 None => {
-                    if c == '"' || c == '\'' || c == '`' {
+                    if c == '\'' && lang == Lang::Rust && !opens_char_literal(chars.clone()) {
+                        out.push(c);
+                    } else if c == '"' || c == '\'' || c == '`' {
                         quote = Some(c);
                     } else if c == '#' && lang == Lang::Python {
                         break;
@@ -256,7 +270,9 @@ pub fn trailing_comment(line: &str, lang: Lang) -> String {
                 }
             }
             None => {
-                if c == '"' || c == '\'' || c == '`' {
+                if c == '\'' && lang == Lang::Rust && !opens_char_literal(chars.clone().map(|(_, ch)| ch)) {
+                    continue;
+                } else if c == '"' || c == '\'' || c == '`' {
                     quote = Some(c);
                 } else if (c == '#' && lang == Lang::Python)
                     || (c == '/'
@@ -511,6 +527,22 @@ mod tests {
         assert!(said.ends_with("free-tier caps."), "{said}");
         assert!(!said.contains('*'), "{said}");
         assert!(!said.contains('/'), "{said}");
+    }
+
+    #[test]
+    fn a_rust_lifetime_is_not_a_quote() {
+        // `'static` never closes; read as a quote it would swallow the comment.
+        let said = trailing_comment("fn name(x: &'static str) -> u8 { 1 } // why it is static", Lang::Rust);
+        assert_eq!(said, "why it is static");
+        let code = code_only("let c = '/'; let s: &'a str = x; // gone\n", Lang::Rust);
+        assert!(code.contains("let s: &'a str = x;"), "{code}");
+        assert!(!code.contains("gone"), "{code}");
+    }
+
+    #[test]
+    fn a_rust_doc_comment_loses_all_its_slashes() {
+        assert_eq!(strip_markers("/// Why this exists.", Lang::Rust), "Why this exists.");
+        assert_eq!(strip_markers("//! Module notes.", Lang::Rust), "Module notes.");
     }
 
     #[test]

@@ -269,7 +269,7 @@ This is a prototype of the core loop: anchoring plus the hook.
 
 - **The reference implementation reads Python only**, using the standard library `ast` and
   `tokenize` modules — which is why it installs with no dependencies at all. The Rust
-  implementation also reads Kotlin, TypeScript, TSX and JavaScript, and everything
+  implementation also reads Rust, Kotlin, TypeScript, TSX and JavaScript, and everything
   language-specific there is four questions in one place: what holds statements, what introduces a
   scope, which names are attributes rather than values, and what counts as a leaf. Another
   language is answering those. A `.kt` note checked by a build without the Kotlin grammar is
@@ -321,7 +321,10 @@ This is a prototype of the core loop: anchoring plus the hook.
    same way.
 3. **Other languages.** The Rust side already parses with tree-sitter, so a new language is
    mostly a grammar plus its statement and scope rules — and a set of conformance cases. Kotlin
-   was added that way and needed no change to how anchoring works; see `conformance/cases/kotlin.toml`.
+   and Rust were added that way and needed no change to how anchoring works; see
+   `conformance/cases/kotlin.toml` and `rust.toml`. Rust was measured with
+   `tools/stress_cli.py` on this repository's own `rust/` (11 files) and on serde_json (71 files,
+   23,000 lines): 0 surprising verdicts on either.
 4. **Make it fast on large repositories**, per Status above.
 5. **Surface notes where people are:** a PR check, and an editor hint on hover.
 
@@ -330,7 +333,7 @@ This is a prototype of the core loop: anchoring plus the hook.
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
-| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python, JavaScript, TypeScript and Kotlin |
+| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python, JavaScript, TypeScript, Kotlin and Rust |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
 | `docs/BUILDING.md` | Building the Rust implementation, and the three ways that goes wrong on Windows |

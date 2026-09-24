@@ -1,0 +1,267 @@
+# The same questions, asked of Rust. An implementation that cannot read this
+# language skips these cases.
+#
+# Rust differs from the other languages in three ways that matter here: a field
+# is the same name in `a.len`, `len: u32` and `Point { len: 3 }`, so it lives in
+# the attribute namespace wherever it appears; an `impl` names no scope of its
+# own but lends one to a type, and a trait impl is qualified so `Display::fmt`
+# and `Debug::fmt` on one type stay apart; and comments come in two node kinds,
+# neither called `comment`.
+
+[[case]]
+name = "a comment added above a statement does not disturb it"
+language = "rust"
+expect = "ok"
+anchor_match = "if body.contains(\"unauthorized\")"
+
+[case.before]
+"client.rs" = '''
+impl Client {
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let body = self.http.get(url)?;
+        if body.contains("unauthorized") {
+            return Err(Error::Auth("200 with the error in the body"));
+        }
+        Ok(body)
+    }
+}
+'''
+
+[case.after]
+"client.rs" = '''
+impl Client {
+    /// Fetch a page, treating the vendor's 200-with-an-error as the failure it is.
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let body = self.http.get(url)?;
+        // The vendor returns 200 on an auth failure.
+        if body.contains("unauthorized") { /* see the ticket */
+            return Err(Error::Auth("200 with the error in the body"));
+        }
+        Ok(body)
+    }
+}
+'''
+
+
+[[case]]
+name = "a consistent rename is followed"
+language = "rust"
+expect = "renamed"
+anchor_match = "if body.contains(\"unauthorized\")"
+
+[case.before]
+"client.rs" = '''
+impl Client {
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let body = self.http.get(url)?;
+        if body.contains("unauthorized") {
+            return Err(Error::Auth("200 with the error in the body"));
+        }
+        Ok(body)
+    }
+}
+'''
+
+[case.after]
+"client.rs" = '''
+impl Client {
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let page = self.http.get(url)?;
+        if page.contains("unauthorized") {
+            return Err(Error::Auth("200 with the error in the body"));
+        }
+        Ok(page)
+    }
+}
+'''
+
+
+[[case]]
+name = "renaming a local does not renumber a field spelled the same way"
+language = "rust"
+expect = "renamed"
+anchor_match = "if len > self.len"
+
+[case.before]
+"buffer.rs" = '''
+impl Buffer {
+    pub fn push(&mut self, data: &[u8]) -> bool {
+        let len = data.len();
+        if len > self.len {
+            return false;
+        }
+        true
+    }
+}
+'''
+
+[case.after]
+"buffer.rs" = '''
+impl Buffer {
+    pub fn push(&mut self, data: &[u8]) -> bool {
+        let size = data.len();
+        if size > self.len {
+            return false;
+        }
+        true
+    }
+}
+'''
+
+
+[[case]]
+name = "a statement that moves to another impl in another file is followed"
+language = "rust"
+expect = "moved"
+expect_file = "guard.rs"
+expect_scope = "Guard.verify"
+anchor_match = "if body.contains(\"unauthorized\")"
+
+[case.before]
+"client.rs" = '''
+impl Client {
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let body = self.http.get(url)?;
+        if body.contains("unauthorized") {
+            return Err(Error::Auth("200 with the error in the body"));
+        }
+        Ok(body)
+    }
+}
+'''
+
+[case.after]
+"client.rs" = '''
+impl Client {
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let body = self.http.get(url)?;
+        Guard::verify(&body)?;
+        Ok(body)
+    }
+}
+'''
+"guard.rs" = '''
+impl Guard {
+    pub fn verify(body: &str) -> Result<(), Error> {
+        if body.contains("unauthorized") {
+            return Err(Error::Auth("200 with the error in the body"));
+        }
+        Ok(())
+    }
+}
+'''
+
+
+[[case]]
+name = "deleting the statement is a removal"
+language = "rust"
+expect = "removed"
+anchor_match = "if body.contains(\"unauthorized\")"
+
+[case.before]
+"client.rs" = '''
+impl Client {
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let body = self.http.get(url)?;
+        if body.contains("unauthorized") {
+            return Err(Error::Auth("200 with the error in the body"));
+        }
+        Ok(body)
+    }
+}
+'''
+
+[case.after]
+"client.rs" = '''
+impl Client {
+    pub fn fetch(&self, url: &str) -> Result<String, Error> {
+        let body = self.http.get(url)?;
+        Ok(body)
+    }
+}
+'''
+
+
+[[case]]
+name = "a trait impl is a scope of its own"
+language = "rust"
+expect = "ok"
+expect_scope = "<Point as Display>.fmt"
+anchor_match = "write!(f, \"({}, {})\", self.x, self.y)"
+
+[case.before]
+"point.rs" = '''
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+'''
+
+[case.after]
+"point.rs" = '''
+impl fmt::Debug for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Point").field("x", &self.x).finish()
+    }
+}
+
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+'''
+
+
+[[case]]
+name = "a match arm is anchorable, and survives its neighbours changing"
+language = "rust"
+expect = "ok"
+anchor_match = "Some(n) if n == 0 =>"
+
+[case.before]
+"retry.rs" = '''
+fn delay(attempt: Option<u32>) -> u64 {
+    match attempt {
+        None => 0,
+        Some(n) if n == 0 => 50,
+        Some(n) => 100 * u64::from(n),
+    }
+}
+'''
+
+[case.after]
+"retry.rs" = '''
+fn delay(attempt: Option<u32>) -> u64 {
+    match attempt {
+        None => 10,
+        Some(n) if n == 0 => 50,
+        Some(n) => 250 * u64::from(n).min(8),
+    }
+}
+'''
+
+
+[[case]]
+name = "a struct field is anchorable"
+language = "rust"
+expect = "ok"
+anchor_match = "pub timeout_ms: u64"
+
+[case.before]
+"config.rs" = '''
+pub struct Config {
+    pub retries: u32,
+    pub timeout_ms: u64,
+}
+'''
+
+[case.after]
+"config.rs" = '''
+pub struct Config {
+    pub retries: u32,
+    pub backoff: bool,
+    pub timeout_ms: u64,
+}
+'''

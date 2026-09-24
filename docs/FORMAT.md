@@ -101,6 +101,16 @@ which the Python implementation prints as `skipped`. It warns and never blocks,
 which is the behaviour that matters — an implementation that cannot read a
 language must not claim that code in it has been deleted.
 
+Rust (`.rs`) was added the same way, also under scheme 5, and for the same
+reason. Checked rather than assumed: `fence statements --json` over Python,
+JavaScript, TypeScript, TSX and Kotlin files gives byte-identical output from a
+build with the Rust grammar and from its parent. Three Rust answers are worth
+knowing when reading a note: comments are `line_comment` and `block_comment`
+(neither is `comment`, and both are dropped like any other); a field is in the
+attribute namespace wherever it is named; and an `impl` lends its type's name as
+the scope, qualified as `<Type as Trait>` by last path segment, so
+`Display::fmt` and `Debug::fmt` on one type are different scopes.
+
 Measured, not assumed: a Python note written under scheme 5 reads as
 `other scheme` in the scheme-3 Python build, and a Kotlin note in the same
 repository reads as `skipped`. Neither blocks a commit.

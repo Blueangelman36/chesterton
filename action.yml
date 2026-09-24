@@ -24,7 +24,7 @@ inputs:
   implementation:
     description: >-
       `python` (reads Python; no build step) or `rust` (reads Python,
-      JavaScript, TypeScript and Kotlin; compiled on first use, then cached).
+      JavaScript, TypeScript, Kotlin and Rust; compiled on first use, then cached).
       Use the one your notes were written with.
     required: false
     default: rust

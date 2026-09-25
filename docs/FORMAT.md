@@ -90,6 +90,12 @@ the scheme that wrote it, not the program that was running:
 | 4 | tree-sitter, the same. Retired |
 | 5 | tree-sitter, with `.js`, `.jsx`, `.mjs` and `.cjs` read by the JavaScript grammar instead of TSX |
 
+Each build also carries a short list of the current builds — the scheme each writes
+and the files each reads — which is how `fence doctor` in either one can say what the
+other would make of a repository. A new scheme number or a new language means
+changing that list in both (`BUILDS` in `python/fence/anchor.py` and
+`rust/src/anchor.rs`); each build's tests compare its copy with the other's source.
+
 Kotlin (`.kt`, `.kts`) was added under scheme 5 rather than taking a number of its
 own. A number exists to say *these fingerprints moved*; adding a language moves
 none. Every Python, JavaScript and TypeScript statement hashes to exactly what it

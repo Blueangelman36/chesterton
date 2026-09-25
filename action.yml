@@ -18,14 +18,15 @@ branding:
 # build that does not read yours reports every note as `other scheme` -- which
 # never blocks. A downstream project once tracked this repository's main branch,
 # picked up a new scheme, and stayed green for a week while guarding nothing.
-# `check --strict`, the default here, turns that into a failure.
+# `check --strict`, the default here, turns that into a failure, and `fence
+# doctor` (either build, run locally) says which implementation your notes need.
 
 inputs:
   implementation:
     description: >-
       `python` (reads Python; no build step) or `rust` (reads Python,
       JavaScript, TypeScript, Kotlin and Rust; compiled on first use, then cached).
-      Use the one your notes were written with.
+      Use the one your notes were written with; `fence doctor` says which.
     required: false
     default: rust
   args:

@@ -50,6 +50,7 @@ fn run(argv: &[String]) -> Result<i32, Error> {
         "suggest" => cmd_suggest(&args),
         "statements" => cmd_statements(&args),
         "check" => cmd_check(&args),
+        "doctor" => cmd_doctor(&args),
         "update" => cmd_update(&args),
         "confirm" => cmd_confirm(&args),
         "reanchor" => cmd_reanchor(&args),
@@ -534,14 +535,227 @@ fn cmd_check(args: &Args) -> Result<i32, Error> {
     if !results.is_empty() && uncompared == results.len() {
         println!(
             "fence: none of the {} note(s) could be compared by this build, so nothing is \
-             being guarded. Run `fence update`.",
+             being guarded. Run `fence update`, or `fence doctor` to see which build wrote them.",
             results.len()
         );
     }
     if strict && uncompared > 0 {
-        println!("fence: --strict: {uncompared} note(s) were not compared.");
+        println!(
+            "fence: --strict: {uncompared} note(s) were not compared. `fence doctor` says which \
+             build can compare them."
+        );
     }
     Ok(if blocked { 1 } else { 0 })
+}
+
+/// Which build can check this repository's notes, and so which one CI should run.
+///
+/// Each build compares only anchors in its own scheme, in files it can read, and
+/// reports the rest as `other scheme` or `unparseable` -- which never blocks. So the
+/// wrong build in CI is a check that passes while guarding nothing. This reads
+/// the notes, not the code: it says what each build is able to compare, and
+/// `fence check` says what it finds.
+fn cmd_doctor(args: &Args) -> Result<i32, Error> {
+    let root = git::repo_root()?;
+    let report = diagnose(&Store::new(&root).notes()?);
+    let complete = report.builds[0].now == report.total;
+    let code = if complete { 0 } else { 1 };
+    if args.has("json") {
+        println!("{}", serde_json::to_string_pretty(&report.as_json()).unwrap_or_default());
+        return Ok(code);
+    }
+
+    let me = &report.builds[0];
+    let total = report.total;
+    println!(
+        "fence doctor: the {} build (anchor scheme {}; reads {})",
+        me.implementation, me.scheme, me.languages
+    );
+    if total == 0 {
+        println!("\nNo notes yet. Any build will do; `fence add` records the first.");
+        return Ok(0);
+    }
+
+    let anchored: Vec<String> = report
+        .schemes
+        .iter()
+        .map(|(scheme, count, build)| {
+            format!("scheme {scheme} ({}) on {count}", scheme_label(build))
+        })
+        .collect();
+    println!("\n{total} note(s). Anchors: {}.\n", anchored.join(", "));
+    let mut shown: Vec<&BuildView> = report.builds.iter().collect();
+    shown.sort_by_key(|b| b.implementation);
+    for build in shown {
+        let mut line = format!("  {:<7} checks {} of {total} now", build.implementation, build.now);
+        if build.after_update != build.now {
+            line += &format!("; {} after `fence update` with it", build.after_update);
+        }
+        if !build.cannot_read.is_empty() {
+            line += &format!("; cannot read {}", build.cannot_read.join(", "));
+        }
+        println!("{line}");
+    }
+
+    println!();
+    match report.pick {
+        None => println!(
+            "No current build can check every note: some are in files none of them reads."
+        ),
+        Some((name, false)) if name == me.implementation => {
+            println!("This build checks every note. In CI: `implementation: {name}`.")
+        }
+        Some((name, true)) => println!(
+            "Run `fence update` with the {name} build and commit the result; then it checks \
+             every note. In CI: `implementation: {name}`."
+        ),
+        Some((name, false)) => {
+            println!("Use the {name} build: it checks every note. In CI: `implementation: {name}`.")
+        }
+    }
+    if !complete {
+        println!("This build cannot check every note, so `fence check --strict` with it fails.");
+    }
+    Ok(code)
+}
+
+struct BuildView {
+    implementation: &'static str,
+    scheme: u32,
+    languages: &'static str,
+    now: usize,
+    after_update: usize,
+    cannot_read: Vec<String>,
+}
+
+struct Diagnosis {
+    total: usize,
+    /// (scheme, notes carrying it, the build that writes it or retired/unknown)
+    schemes: Vec<(u32, usize, String)>,
+    /// This build first: it is the one being asked, and it wins a tie.
+    builds: Vec<BuildView>,
+    /// The build that checks every note, and whether `fence update` must run first.
+    pick: Option<(&'static str, bool)>,
+}
+
+impl Diagnosis {
+    fn as_json(&self) -> serde_json::Value {
+        let me = &self.builds[0];
+        json!({
+            "build": {
+                "implementation": me.implementation,
+                "scheme": me.scheme,
+                "languages": me.languages,
+            },
+            "notes": self.total,
+            "schemes": self.schemes.iter().map(|(scheme, count, build)| json!({
+                "scheme": scheme, "notes": count, "build": build,
+            })).collect::<Vec<_>>(),
+            "builds": self.builds.iter().map(|b| json!({
+                "implementation": b.implementation,
+                "scheme": b.scheme,
+                "languages": b.languages,
+                "now": b.now,
+                "after_update": b.after_update,
+                "cannot_read": b.cannot_read,
+            })).collect::<Vec<_>>(),
+            "recommend": self.pick.map(|(name, update_first)| json!({
+                "implementation": name, "update_first": update_first,
+            })),
+            "complete": me.now == self.total,
+        })
+    }
+}
+
+/// What each current build can compare, from the anchors the notes carry.
+fn diagnose(notes: &[Note]) -> Diagnosis {
+    let total = notes.len();
+    let mut per_scheme: BTreeMap<u32, usize> = BTreeMap::new();
+    for note in notes {
+        // Digits only, as the Python build reads them: `parse` alone accepts "+5".
+        let schemes = note
+            .anchors
+            .keys()
+            .filter(|key| key.bytes().all(|b| b.is_ascii_digit()))
+            .filter_map(|key| key.parse::<u32>().ok());
+        for scheme in schemes {
+            *per_scheme.entry(scheme).or_default() += 1;
+        }
+    }
+    let newest = anchor::BUILDS.iter().map(|b| b.scheme).max().unwrap_or(0);
+    let schemes = per_scheme
+        .into_iter()
+        .map(|(scheme, count)| {
+            let build = match anchor::BUILDS.iter().find(|b| b.scheme == scheme) {
+                Some(build) => build.implementation,
+                None if scheme < newest => "retired",
+                None => "unknown",
+            };
+            (scheme, count, build.to_string())
+        })
+        .collect();
+
+    let mut builds: Vec<BuildView> = anchor::BUILDS
+        .iter()
+        .map(|build| {
+            let (mut now, mut after_update) = (0, 0);
+            let mut unread = std::collections::BTreeSet::new();
+            for note in notes {
+                let own = note.anchors.get(&build.scheme.to_string());
+                let path = own.map_or(note.anchor.path.as_str(), |a| a.path.as_str());
+                if anchor::reads(path, build.extensions) {
+                    after_update += 1;
+                    now += usize::from(own.is_some());
+                } else {
+                    unread.insert(suffix_of(path));
+                }
+            }
+            BuildView {
+                implementation: build.implementation,
+                scheme: build.scheme,
+                languages: build.languages,
+                now,
+                after_update,
+                cannot_read: unread.into_iter().collect(),
+            }
+        })
+        .collect();
+    builds.sort_by_key(|b| b.implementation != anchor::IMPLEMENTATION);
+
+    let pick = builds
+        .iter()
+        .find(|b| b.now == total)
+        .map(|b| (b.implementation, false))
+        .or_else(|| {
+            let mut by_now: Vec<&BuildView> = builds.iter().collect();
+            by_now.sort_by_key(|b| std::cmp::Reverse(b.now));
+            by_now
+                .into_iter()
+                .find(|b| b.after_update == total)
+                .map(|b| (b.implementation, true))
+        });
+    Diagnosis { total, schemes, builds, pick }
+}
+
+fn scheme_label(build: &str) -> String {
+    match build {
+        b if b == anchor::IMPLEMENTATION => "this build".to_string(),
+        "retired" => "retired".to_string(),
+        "unknown" => "unknown to this build: a newer fence?".to_string(),
+        other => format!("the {other} build"),
+    }
+}
+
+/// `.kt` for src/Client.kt, the name itself for a file with no extension.
+fn suffix_of(path: &str) -> String {
+    let path = Path::new(path);
+    match path.extension() {
+        Some(extension) => format!(".{}", extension.to_string_lossy().to_ascii_lowercase()),
+        None => path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    }
 }
 
 fn cmd_update(_args: &Args) -> Result<i32, Error> {

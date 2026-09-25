@@ -67,6 +67,7 @@ fence: 1559744b now follows client.py:4  in Client.fetch
 | `fence add FILE:LINE[-END] -m "why"` | Record why a statement exists. `--from-blame` borrows the message of the commit that wrote the line; `--source` records a link or ticket |
 | `fence list [PATH]` | List notes |
 | `fence check [--staged] [--strict]` | Find each note's code and report what happened to it. `--staged` is what the hook runs: staged files only. `--strict` is for CI: it also fails when a note could not be compared at all (written by another build or scheme, or its file does not parse), which otherwise only warns |
+| `fence doctor` | Which build can check this repository's notes, and so which one CI should run. Exits 1 when the build you ran cannot check them all. `--json` for tooling |
 | `fence update` | Re-pin notes whose code was renamed or moved |
 | `fence confirm ID` | The code changed, but the reason still holds |
 | `fence reanchor ID FILE:LINE` | Point a note at different code |
@@ -112,6 +113,21 @@ The hook only runs where someone installed it. CI runs for everyone:
 - uses: Blueangelman36/chesterton@<tag or full commit>
   with:
     implementation: rust   # or python: the build your notes were written with
+```
+
+Not sure which build wrote your notes? Either build will tell you, from the notes alone:
+
+```text
+$ fence doctor
+fence doctor: the python build (anchor scheme 3; reads Python)
+
+16 note(s). Anchors: scheme 4 (retired) on 12, scheme 5 (the rust build) on 16.
+
+  python  checks 0 of 16 now; cannot read .js
+  rust    checks 16 of 16 now
+
+Use the rust build: it checks every note. In CI: `implementation: rust`.
+This build cannot check every note, so `fence check --strict` with it fails.
 ```
 
 It runs `fence check --strict`, so it fails on a removed statement *and* on notes it

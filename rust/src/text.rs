@@ -114,6 +114,7 @@ remember why code exists, and speak up before it's removed.
   statements FILE [--json]            every statement a note could be pinned to
   check [--staged] [--json]           find each note's code and report what happened
       [--strict]                      (CI) also fail on notes this build could not compare
+  doctor [--json]                     which build can check these notes; which to run in CI
   update                              re-pin notes whose code was renamed or moved
   confirm ID                          the code changed, but the reason still holds
   reanchor ID FILE:LINE               point a note at different code

@@ -14,6 +14,45 @@ use tree_sitter::{Node, Parser, Tree};
 /// Anything that changes a hash changes this: 4 read .js with the TSX grammar,
 /// and switching grammars moved a fifth of the fingerprints in a real project.
 pub const ANCHOR_VERSION: u32 = 5;
+
+/// Which build this is.
+pub const IMPLEMENTATION: &str = "rust";
+
+/// A current build of fence: the scheme it writes and the files it reads.
+pub struct Build {
+    pub implementation: &'static str,
+    pub scheme: u32,
+    pub extensions: &'static [&'static str],
+    pub languages: &'static str,
+}
+
+/// Every current build, so `fence doctor` can say which one a repository's notes
+/// need. It has to describe the Python build too: the tests hold that entry to
+/// python/fence/anchor.py, and this build's entry to `Lang::of`. A scheme missing
+/// from here is retired, or newer than this build.
+pub const BUILDS: &[Build] = &[
+    Build {
+        implementation: "python",
+        scheme: 3,
+        extensions: &[".py", ".pyi"],
+        languages: "Python",
+    },
+    Build {
+        implementation: IMPLEMENTATION,
+        scheme: ANCHOR_VERSION,
+        extensions: &[
+            ".py", ".pyi", ".kt", ".kts", ".rs", ".ts", ".mts", ".cts", ".tsx", ".js", ".jsx",
+            ".mjs", ".cjs",
+        ],
+        languages: "Python, JavaScript, TypeScript, Kotlin and Rust",
+    },
+];
+
+/// Whether a build reading these extensions reads this file.
+pub fn reads(path: &str, extensions: &[&str]) -> bool {
+    let lower = path.to_ascii_lowercase();
+    extensions.iter().any(|extension| lower.ends_with(extension))
+}
 pub const MIN_DISTINCTIVE_TOKENS: usize = 12;
 pub const CHANGED_THRESHOLD: f64 = 0.5;
 const SNIPPET_LINES: usize = 12;
@@ -947,7 +986,59 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
 /// implementation, so a short non-cryptographic digest is enough.
 #[cfg(test)]
 mod tests {
-    use super::{last_path_segment, worth_reading};
+    use super::{
+        last_path_segment, reads, worth_reading, Lang, ANCHOR_VERSION, BUILDS, IMPLEMENTATION,
+    };
+
+    #[test]
+    fn the_registry_says_what_this_build_reads() {
+        let mine: Vec<_> = BUILDS.iter().filter(|b| b.implementation == IMPLEMENTATION).collect();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].scheme, ANCHOR_VERSION);
+        // Both directions: everything listed is read, and nothing read is unlisted.
+        let mut probes: Vec<&str> = BUILDS.iter().flat_map(|b| b.extensions.iter().copied()).collect();
+        probes.extend([
+            ".go", ".java", ".c", ".h", ".cpp", ".cs", ".rb", ".php", ".swift", ".scala", ".sh",
+            ".md", ".json", ".toml", ".yaml", ".html", ".css", ".vue", ".svelte", ".lua", ".ex",
+            ".dart", ".sql", ".r", ".jl", ".zig", ".m", ".mm", ".pl", ".hs", ".ml", ".clj",
+        ]);
+        for extension in probes {
+            let path = format!("src/file{extension}");
+            assert_eq!(
+                Lang::of(&path).is_some(),
+                reads(&path, mine[0].extensions),
+                "{extension}: Lang::of and the registry disagree"
+            );
+        }
+    }
+
+    #[test]
+    fn the_registry_says_what_the_python_build_reads() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../python/fence/anchor.py");
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            return; // the Python sources are not alongside this copy
+        };
+        let line = |prefix: &str| {
+            source
+                .lines()
+                .find(|l| l.starts_with(prefix))
+                .unwrap_or_else(|| panic!("no `{prefix}` in python/fence/anchor.py"))
+                .to_string()
+        };
+        let version: u32 = line("ANCHOR_VERSION = ")["ANCHOR_VERSION = ".len()..].trim().parse().unwrap();
+        let extensions: Vec<String> = line("EXTENSIONS = ")
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect();
+        let python = BUILDS.iter().find(|b| b.implementation == "python").unwrap();
+        assert_eq!(python.scheme, version);
+        assert_eq!(python.extensions, extensions);
+        let schemes: std::collections::HashSet<u32> = BUILDS.iter().map(|b| b.scheme).collect();
+        assert_eq!(schemes.len(), BUILDS.len(), "one build per scheme");
+    }
 
     #[test]
     fn a_rust_path_is_named_by_its_last_segment() {

@@ -232,6 +232,124 @@ fn strict_fails_when_no_note_could_be_compared() {
     assert_eq!(code, 0, "{out}");
 }
 
+/// Make the note look as though another build wrote it: one anchor, in `scheme`.
+fn rescheme(repo: &Repo, id: &str, scheme: u32, path: Option<&str>) {
+    let stored = repo.dir.join(".fence").join("notes").join(format!("{id}.json"));
+    let mut written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&stored).unwrap()).unwrap();
+    let mut theirs = written["anchors"].as_object().unwrap().values().next().unwrap().clone();
+    theirs["version"] = serde_json::json!(scheme);
+    theirs["exact"] = serde_json::json!("x");
+    theirs["shape"] = serde_json::json!("x");
+    if let Some(path) = path {
+        theirs["path"] = serde_json::json!(path);
+    }
+    written["anchors"] = serde_json::json!({ scheme.to_string(): theirs });
+    std::fs::write(&stored, serde_json::to_string_pretty(&written).unwrap()).unwrap();
+}
+
+fn doctor(repo: &Repo) -> (i32, serde_json::Value) {
+    let (code, out) = repo.fence(&["doctor", "--json"]);
+    (code, serde_json::from_str(&out).unwrap_or_else(|e| panic!("{e}: {out}")))
+}
+
+#[test]
+fn doctor_approves_the_build_that_wrote_the_notes() {
+    let repo = Repo::new("doctor-ok");
+    record(&repo);
+    let (code, out) = repo.fence(&["doctor"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("This build checks every note"), "{out}");
+    assert!(out.contains("`implementation: rust`"), "{out}");
+}
+
+#[test]
+fn doctor_names_the_build_the_notes_need() {
+    // The case that stays green in CI while guarding nothing: every note is in a
+    // scheme only the other build writes.
+    let repo = Repo::new("doctor-other");
+    let id = record(&repo);
+    rescheme(&repo, &id, 3, None);
+    let (code, report) = doctor(&repo);
+    assert_eq!(code, 1);
+    assert_eq!(report["complete"], serde_json::json!(false));
+    assert_eq!(
+        report["recommend"],
+        serde_json::json!({ "implementation": "python", "update_first": false })
+    );
+    assert_eq!(
+        report["schemes"],
+        serde_json::json!([{ "scheme": 3, "notes": 1, "build": "python" }])
+    );
+    let mine = &report["builds"][0];
+    assert_eq!(mine["implementation"], serde_json::json!("rust"));
+    assert_eq!((mine["now"].as_u64(), mine["after_update"].as_u64()), (Some(0), Some(1)));
+
+    let (_, out) = repo.fence(&["doctor"]);
+    assert!(out.contains("Use the python build"), "{out}");
+    assert!(out.contains("`fence check --strict` with it fails"), "{out}");
+}
+
+#[test]
+fn doctor_says_which_files_a_build_cannot_read() {
+    let repo = Repo::new("doctor-unread");
+    let id = record(&repo);
+    rescheme(&repo, &id, 5, Some("src/Client.kt"));
+    let (code, report) = doctor(&repo);
+    assert_eq!(code, 0);
+    let python = report["builds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["implementation"] == "python")
+        .unwrap();
+    assert_eq!(python["cannot_read"], serde_json::json!([".kt"]));
+    assert_eq!(python["after_update"], serde_json::json!(0));
+}
+
+#[test]
+fn doctor_sends_a_retired_scheme_to_fence_update() {
+    let repo = Repo::new("doctor-retired");
+    let id = record(&repo);
+    rescheme(&repo, &id, 4, None);
+    let (code, report) = doctor(&repo);
+    assert_eq!(code, 1);
+    assert_eq!(report["schemes"][0]["build"], serde_json::json!("retired"));
+    assert_eq!(
+        report["recommend"],
+        serde_json::json!({ "implementation": "rust", "update_first": true })
+    );
+    let (_, out) = repo.fence(&["doctor"]);
+    assert!(out.contains("Run `fence update` with the rust build"), "{out}");
+
+    repo.fence(&["update"]);
+    assert_eq!(doctor(&repo).0, 0);
+}
+
+#[test]
+fn doctor_does_not_guess_at_a_scheme_it_has_never_heard_of() {
+    let repo = Repo::new("doctor-unknown");
+    let id = record(&repo);
+    rescheme(&repo, &id, 99, None);
+    let (code, report) = doctor(&repo);
+    assert_eq!(code, 1);
+    assert_eq!(report["schemes"][0]["build"], serde_json::json!("unknown"));
+    let (_, out) = repo.fence(&["doctor"]);
+    assert!(out.contains("a newer fence?"), "{out}");
+    let (_, out) = repo.fence(&["check", "--strict"]);
+    assert!(out.contains("fence doctor"), "{out}");
+}
+
+#[test]
+fn doctor_with_no_notes() {
+    let repo = Repo::new("doctor-empty");
+    let id = record(&repo);
+    repo.fence(&["retire", &id, "-m", "the vendor fixed it"]);
+    let (code, out) = repo.fence(&["doctor"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("No notes yet"), "{out}");
+}
+
 #[test]
 fn suggest_finds_a_typescript_statement_worth_recording() {
     let repo = Repo::new("suggest");

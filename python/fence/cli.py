@@ -330,27 +330,150 @@ def cmd_check(args) -> int:
         index = _worktree_index(root)
 
     results = [(n, A.locate(n["anchor"], index)) for n in notes]
+    counts = Counter(m.how for _, m in results)
+    # A note this build could not compare is a note nobody is checking. That is
+    # fine for one note in a mixed repository and a silent outage when it is all
+    # of them -- a new anchor scheme once turned every note in a downstream
+    # project into `other scheme`, and its CI stayed green guarding nothing.
+    # --strict is for CI: anything not compared fails the run.
+    uncompared = counts["foreign"] + counts["unparseable"]
+    blocked = bool(counts["removed"]) or (args.strict and uncompared > 0)
     if args.json:
-        counted = Counter(m.how for _, m in results)
         print(json.dumps({
             "checked": len(results),
-            "counts": {k: counted[k] for k in LABELS if counted[k]},
-            "blocked": bool(counted["removed"]),
+            "counts": {k: counts[k] for k in LABELS if counts[k]},
+            "uncompared": uncompared,
+            "blocked": blocked,
             "notes": [_as_json(n, m) for n, m in results],
         }, indent=2))
-        return 1 if counted["removed"] else 0
+        return 1 if blocked else 0
 
     shown = [(n, m) for n, m in results if not (args.staged and m.how == "ok")]
     for note, m in shown:
         print("\n".join(_describe(note, m)))
 
-    counts = Counter(m.how for _, m in results)
     if not args.staged or shown:
         tally = ", ".join(f"{counts[k]} {LABELS[k]}" for k in LABELS if counts[k])
         print(f"\nfence: {len(results)} note(s) checked" + (f": {tally}" if tally else ""))
         for hint in _hints(counts, args.staged):
             print(f"  {hint}")
-    return 1 if counts["removed"] else 0
+    if results and uncompared == len(results):
+        print(f"fence: none of the {len(results)} note(s) could be compared by this build, "
+              "so nothing is being guarded. Run `fence update`, or `fence doctor` "
+              "to see which build wrote them.")
+    if args.strict and uncompared:
+        print(f"fence: --strict: {uncompared} note(s) were not compared. "
+              "`fence doctor` says which build can compare them.")
+    return 1 if blocked else 0
+
+
+def cmd_doctor(args) -> int:
+    """Which build can check this repository's notes, and so which one CI should run.
+
+    Each build compares only anchors in its own scheme, in files it can read, and
+    reports the rest as `other scheme` or `skipped` -- which never blocks. So the
+    wrong build in CI is a check that passes while guarding nothing. This reads
+    the notes, not the code: it says what each build is able to compare, and
+    `fence check` says what it finds.
+    """
+    report = _diagnose(Store(repo_root()).notes())
+    complete = report["complete"]
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0 if complete else 1
+
+    me = report["builds"][0]
+    total = report["notes"]
+    print(f"fence doctor: the {me['implementation']} build "
+          f"(anchor scheme {me['scheme']}; reads {me['languages']})")
+    if not total:
+        print("\nNo notes yet. Any build will do; `fence add` records the first.")
+        return 0
+
+    anchored = ", ".join(
+        f"scheme {s['scheme']} ({_scheme_label(s['build'])}) on {s['notes']}"
+        for s in report["schemes"])
+    print(f"\n{total} note(s). Anchors: {anchored}.\n")
+    for build in sorted(report["builds"], key=lambda b: b["implementation"]):
+        line = f"  {build['implementation']:<7} checks {build['now']} of {total} now"
+        if build["after_update"] != build["now"]:
+            line += f"; {build['after_update']} after `fence update` with it"
+        if build["cannot_read"]:
+            line += f"; cannot read {', '.join(build['cannot_read'])}"
+        print(line)
+
+    pick = report["recommend"]
+    print()
+    if pick is None:
+        print("No current build can check every note: some are in files none of them reads.")
+    elif pick["implementation"] == me["implementation"] and not pick["update_first"]:
+        print(f"This build checks every note. In CI: `implementation: {me['implementation']}`.")
+    elif pick["update_first"]:
+        print(f"Run `fence update` with the {pick['implementation']} build and commit the "
+              f"result; then it checks every note. In CI: "
+              f"`implementation: {pick['implementation']}`.")
+    else:
+        print(f"Use the {pick['implementation']} build: it checks every note. "
+              f"In CI: `implementation: {pick['implementation']}`.")
+    if not complete:
+        print("This build cannot check every note, so `fence check --strict` with it fails.")
+    return 0 if complete else 1
+
+
+def _diagnose(notes: list[dict]) -> dict:
+    """What each current build can compare, from the anchors the notes carry."""
+    total = len(notes)
+    per_scheme = Counter()
+    for note in notes:
+        for key in note["anchors"]:
+            if key.isascii() and key.isdigit():
+                per_scheme[int(key)] += 1
+    current = {scheme: name for name, scheme, _, _ in A.BUILDS}
+    newest = max(current)
+
+    builds = []
+    for name, scheme, extensions, languages in A.BUILDS:
+        now = after = 0
+        unread = set()
+        for note in notes:
+            own = note["anchors"].get(str(scheme))
+            path = (own or {}).get("path") or note["anchor"]["path"]
+            if A.reads(path, extensions):
+                after += 1
+                now += own is not None
+            else:
+                unread.add(Path(path).suffix.lower() or Path(path).name)
+        builds.append({"implementation": name, "scheme": scheme, "languages": languages,
+                       "now": now, "after_update": after, "cannot_read": sorted(unread)})
+    # This build first: it is the one being asked, and it wins a tie.
+    builds.sort(key=lambda b: b["implementation"] != A.IMPLEMENTATION)
+
+    pick = next((dict(implementation=b["implementation"], update_first=False)
+                 for b in builds if b["now"] == total), None)
+    if pick is None:
+        pick = next((dict(implementation=b["implementation"], update_first=True)
+                     for b in sorted(builds, key=lambda b: -b["now"])
+                     if b["after_update"] == total), None)
+    return {
+        "build": {key: builds[0][key] for key in ("implementation", "scheme", "languages")},
+        "notes": total,
+        "schemes": [{"scheme": scheme, "notes": count,
+                     "build": current.get(scheme) or ("retired" if scheme < newest else "unknown")}
+                    for scheme, count in sorted(per_scheme.items())],
+        "builds": builds,
+        "recommend": pick,
+        "complete": builds[0]["now"] == total,
+    }
+
+
+def _scheme_label(build: str) -> str:
+    if build == A.IMPLEMENTATION:
+        return "this build"
+    if build == "retired":
+        return "retired"
+    if build == "unknown":
+        return "unknown to this build: a newer fence?"
+    return f"the {build} build"
 
 
 def cmd_update(args) -> int:
@@ -666,8 +789,15 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("check", help="find each note's code and report what happened to it")
     s.add_argument("--staged", action="store_true",
                    help="check staged files only (what the pre-commit hook runs)")
+    s.add_argument("--strict", action="store_true",
+                   help="also fail when a note could not be compared (other scheme, "
+                        "unparseable file); for CI")
     s.add_argument("--json", action="store_true", help="machine-readable output")
     s.set_defaults(run=cmd_check)
+
+    s = sub.add_parser("doctor", help="which build can check these notes, and which to run in CI")
+    s.add_argument("--json", action="store_true", help="machine-readable output")
+    s.set_defaults(run=cmd_doctor)
 
     s = sub.add_parser("update", help="re-pin notes whose code was renamed or moved")
     s.set_defaults(run=cmd_update)

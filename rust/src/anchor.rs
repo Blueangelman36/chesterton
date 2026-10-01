@@ -14,6 +14,45 @@ use tree_sitter::{Node, Parser, Tree};
 /// Anything that changes a hash changes this: 4 read .js with the TSX grammar,
 /// and switching grammars moved a fifth of the fingerprints in a real project.
 pub const ANCHOR_VERSION: u32 = 5;
+
+/// Which build this is.
+pub const IMPLEMENTATION: &str = "rust";
+
+/// A current build of fence: the scheme it writes and the files it reads.
+pub struct Build {
+    pub implementation: &'static str,
+    pub scheme: u32,
+    pub extensions: &'static [&'static str],
+    pub languages: &'static str,
+}
+
+/// Every current build, so `fence doctor` can say which one a repository's notes
+/// need. It has to describe the Python build too: the tests hold that entry to
+/// python/fence/anchor.py, and this build's entry to `Lang::of`. A scheme missing
+/// from here is retired, or newer than this build.
+pub const BUILDS: &[Build] = &[
+    Build {
+        implementation: "python",
+        scheme: 3,
+        extensions: &[".py", ".pyi"],
+        languages: "Python",
+    },
+    Build {
+        implementation: IMPLEMENTATION,
+        scheme: ANCHOR_VERSION,
+        extensions: &[
+            ".py", ".pyi", ".kt", ".kts", ".rs", ".ts", ".mts", ".cts", ".tsx", ".js", ".jsx",
+            ".mjs", ".cjs",
+        ],
+        languages: "Python, JavaScript, TypeScript, Kotlin and Rust",
+    },
+];
+
+/// Whether a build reading these extensions reads this file.
+pub fn reads(path: &str, extensions: &[&str]) -> bool {
+    let lower = path.to_ascii_lowercase();
+    extensions.iter().any(|extension| lower.ends_with(extension))
+}
 pub const MIN_DISTINCTIVE_TOKENS: usize = 12;
 pub const CHANGED_THRESHOLD: f64 = 0.5;
 const SNIPPET_LINES: usize = 12;
@@ -91,6 +130,8 @@ pub enum Lang {
     JavaScript,
     TypeScript,
     Tsx,
+    Kotlin,
+    Rust,
 }
 
 impl Lang {
@@ -100,6 +141,17 @@ impl Lang {
             if lower.ends_with(suffix) {
                 return Some(Lang::Python);
             }
+        }
+        // `.kts` does not collide with `.ts`: the dot is part of the suffix, so
+        // "build.gradle.kts" ends with "kts", not ".ts". Gradle build files are
+        // Kotlin, and are exactly where a project's load-bearing oddities live.
+        for suffix in [".kt", ".kts"] {
+            if lower.ends_with(suffix) {
+                return Some(Lang::Kotlin);
+            }
+        }
+        if lower.ends_with(".rs") {
+            return Some(Lang::Rust);
         }
         for suffix in [".ts", ".mts", ".cts"] {
             if lower.ends_with(suffix) {
@@ -128,6 +180,8 @@ impl Lang {
             Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            Lang::Kotlin => tree_sitter_kotlin_ng::LANGUAGE.into(),
+            Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
         }
     }
 
@@ -135,6 +189,35 @@ impl Lang {
     fn holds_statements(self, kind: &str) -> bool {
         match self {
             Lang::Python => matches!(kind, "block" | "module"),
+            // `enum_class_body` is not only enums: this grammar uses it for an
+            // interface body too, so leaving it out would make every method of
+            // an interface unanchorable.
+            Lang::Kotlin => matches!(
+                kind,
+                "source_file"
+                    | "block"
+                    | "class_body"
+                    | "enum_class_body"
+                    // A trailing lambda holds its statements directly, and is
+                    // where Compose UI and every Gradle build file keep theirs.
+                    // Without this a `Column { ... }` body is one candidate and
+                    // nothing drawn inside it can be anchored.
+                    | "lambda_literal"
+            ),
+            Lang::Rust => matches!(
+                kind,
+                "source_file"
+                    | "block"
+                    // The body of an `impl`, a `trait` or a `mod`.
+                    | "declaration_list"
+                    // Each arm of a match is its own decision, and a guard arm
+                    // that looks unreachable is the classic thing to delete.
+                    | "match_block"
+                    // Struct fields and enum variants: a field's type or a
+                    // variant's order is often the load-bearing choice.
+                    | "field_declaration_list"
+                    | "enum_variant_list"
+            ),
             _ => matches!(
                 kind,
                 "program" | "statement_block" | "class_body" | "switch_case" | "switch_default"
@@ -142,10 +225,36 @@ impl Lang {
         }
     }
 
+    /// Named children of a container that are not statements, and would
+    /// otherwise be indexed as though they were.
+    fn not_a_statement(self, kind: &str) -> bool {
+        match self {
+            // `{ p -> ... }` puts the parameter list inside the lambda body,
+            // next to the statements rather than on the lambda itself.
+            Lang::Kotlin => kind == "lambda_parameters",
+            Lang::Rust => false,
+            _ => false,
+        }
+    }
+
+    /// Comments, which never count: they are dropped from fingerprints, and never
+    /// candidates. Rust has two kinds and calls neither `comment`.
+    fn is_comment(self, kind: &str) -> bool {
+        match self {
+            Lang::Rust => matches!(kind, "line_comment" | "block_comment"),
+            _ => kind == "comment",
+        }
+    }
+
     /// A leaf in spirit: descending into a string would compare its pieces.
     fn is_atom(self, kind: &str) -> bool {
         match self {
             Lang::Python => kind == "string",
+            // A Kotlin string carries its interpolations as children, so without
+            // this a rename inside "tick $i" would read as a structural change.
+            Lang::Kotlin => matches!(kind, "string_literal" | "character_literal"),
+            // Rust strings carry their escapes and content as children.
+            Lang::Rust => matches!(kind, "string_literal" | "raw_string_literal" | "char_literal"),
             _ => matches!(kind, "string" | "template_string"),
         }
     }
@@ -153,6 +262,11 @@ impl Lang {
     fn is_identifier(self, kind: &str) -> bool {
         match self {
             Lang::Python => kind == "identifier",
+            Lang::Kotlin => kind == "identifier",
+            Lang::Rust => matches!(
+                kind,
+                "identifier" | "type_identifier" | "field_identifier" | "shorthand_field_identifier"
+            ),
             _ => matches!(
                 kind,
                 "identifier"
@@ -166,14 +280,43 @@ impl Lang {
 
     /// A property name is an attribute wherever it turns up, not only after a dot.
     fn identifier_is_attribute(self, kind: &str) -> bool {
-        self != Lang::Python && kind == "property_identifier"
+        match self {
+            // Kotlin spells a member access with the same `identifier` node as a
+            // local, so no kind is always an attribute. Which side of the dot a
+            // name sits on is decided in `attribute_child` instead.
+            Lang::Python | Lang::Kotlin => false,
+            // A field is a field wherever it is named: `a.len`, `len: u32` in a
+            // struct, and `Point { len: 3 }` are the same name, and none of them
+            // is the local `len`. `Point { len }` is a local as well, and stays
+            // a value.
+            Lang::Rust => kind == "field_identifier",
+            _ => kind == "property_identifier",
+        }
     }
 
     /// The child holding a name in the attribute namespace rather than the value one.
     fn attribute_child(self, node: Node) -> Option<usize> {
+        // Kotlin names no fields on a navigation, so it is answered positionally
+        // rather than by field, and returns early.
+        if self == Lang::Kotlin {
+            if node.kind() != "navigation_expression" {
+                return None;
+            }
+            // `a.b`, `a?.b`, `a::b` and `a!!.b` are all this one node with the
+            // receiver first and the name last, so the last named child is the
+            // attribute. Without this the name after the dot is numbered as a
+            // value, and renaming an unrelated local shifts it.
+            let count = node.named_child_count();
+            if count < 2 {
+                return None;
+            }
+            return node.named_child(count as u32 - 1).map(|child| child.id());
+        }
         let field = match self {
             Lang::Python if node.kind() == "attribute" => "attribute",
             Lang::Python => return None,
+            Lang::Rust if node.kind() == "field_expression" => "field",
+            Lang::Rust => return None,
             _ if node.kind() == "member_expression" => "property",
             _ => return None,
         };
@@ -191,6 +334,42 @@ impl Lang {
         match self {
             Lang::Python => match node.kind() {
                 "function_definition" | "class_definition" => named(node),
+                _ => None,
+            },
+            Lang::Kotlin => match node.kind() {
+                // `interface` and `enum class` are both `class_declaration` here.
+                "function_declaration" | "class_declaration" | "object_declaration" => named(node),
+                // A companion object has no name in the grammar, but Kotlin
+                // addresses its members through one. Without a scope of its own
+                // its members would sit in the enclosing class's, where they
+                // could collide with instance members spelled the same way.
+                "companion_object" => Some("Companion".to_string()),
+                _ => None,
+            },
+            Lang::Rust => match node.kind() {
+                "function_item" | "struct_item" | "enum_item" | "union_item" | "trait_item"
+                | "mod_item" | "macro_definition" => named(node),
+                // An impl names no scope of its own; it lends one to a type. A
+                // trait impl is qualified the way Rust spells it, because
+                // `Display::fmt` and `Debug::fmt` on one type are different
+                // functions with the same name, and sharing a scope would let
+                // one stand in for the other.
+                "impl_item" => {
+                    // By the last path segment: `fmt::Display` and an imported
+                    // `Display` are one trait, and a changed `use` should not
+                    // read as every method in the impl moving.
+                    let text = |field: &str| -> Option<String> {
+                        let n = node.child_by_field_name(field)?;
+                        let t = n.utf8_text(source.as_bytes()).ok()?;
+                        let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+                        Some(last_path_segment(&t).to_string())
+                    };
+                    let ty = text("type")?;
+                    Some(match text("trait") {
+                        Some(tr) => format!("<{ty} as {tr}>"),
+                        None => ty,
+                    })
+                }
                 _ => None,
             },
             _ => match node.kind() {
@@ -215,6 +394,28 @@ impl Lang {
             },
         }
     }
+}
+
+/// `std::fmt::Display` -> `Display`, `a::Wrapper<b::T>` -> `Wrapper<b::T>`: the
+/// last `::` outside any generic arguments.
+fn last_path_segment(path: &str) -> &str {
+    let mut depth = 0i32;
+    let mut start = 0;
+    let bytes = path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'<' => depth += 1,
+            b'>' => depth -= 1,
+            b':' if depth == 0 && bytes.get(i + 1) == Some(&b':') => {
+                start = i + 2;
+                i += 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    &path[start..]
 }
 
 /// Where an implementation gets files from: the worktree, the index, or a test.
@@ -380,6 +581,8 @@ pub fn worth_reading(path: &str, source: &str) -> bool {
         "/vendor/", "/vendored/", "/node_modules/", "/dist/", "/build/", "/third_party/",
         "/site-packages/", "/.venv/", "/migrations/", ".min.js", ".min.css", ".bundle.js",
         "-min.js", ".generated.", "_pb2.py",
+        // Cargo's and Maven's build output, when it is not gitignored.
+        "/target/",
     ];
     let lower = format!("/{}", path.to_ascii_lowercase());
     if GENERATED.iter().any(|part| lower.contains(part)) {
@@ -437,10 +640,10 @@ fn walk(
     let container = lang.holds_statements(node.kind());
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        if child.kind() == "comment" {
+        if lang.is_comment(child.kind()) {
             continue;
         }
-        if container {
+        if container && !lang.not_a_statement(child.kind()) {
             out.push(candidate(lang, child, path, source, lines, scope));
         }
         let inner = match lang.scope_name(child, source) {
@@ -525,7 +728,7 @@ fn serialize(
     out: &mut String,
     attribute: bool,
 ) {
-    if node.kind() == "comment" {
+    if lang.is_comment(node.kind()) {
         return;
     }
     if node.child_count() == 0 || lang.is_atom(node.kind()) {
@@ -554,7 +757,7 @@ fn serialize(
 }
 
 fn collect_tokens(lang: Lang, node: Node, source: &str, out: &mut Vec<String>) {
-    if node.kind() == "comment" {
+    if lang.is_comment(node.kind()) {
         return;
     }
     if node.child_count() == 0 || lang.is_atom(node.kind()) {
@@ -783,7 +986,66 @@ pub fn locate(anchor: &Anchor, index: &Index) -> Match {
 /// implementation, so a short non-cryptographic digest is enough.
 #[cfg(test)]
 mod tests {
-    use super::worth_reading;
+    use super::{
+        last_path_segment, reads, worth_reading, Lang, ANCHOR_VERSION, BUILDS, IMPLEMENTATION,
+    };
+
+    #[test]
+    fn the_registry_says_what_this_build_reads() {
+        let mine: Vec<_> = BUILDS.iter().filter(|b| b.implementation == IMPLEMENTATION).collect();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].scheme, ANCHOR_VERSION);
+        // Both directions: everything listed is read, and nothing read is unlisted.
+        let mut probes: Vec<&str> = BUILDS.iter().flat_map(|b| b.extensions.iter().copied()).collect();
+        probes.extend([
+            ".go", ".java", ".c", ".h", ".cpp", ".cs", ".rb", ".php", ".swift", ".scala", ".sh",
+            ".md", ".json", ".toml", ".yaml", ".html", ".css", ".vue", ".svelte", ".lua", ".ex",
+            ".dart", ".sql", ".r", ".jl", ".zig", ".m", ".mm", ".pl", ".hs", ".ml", ".clj",
+        ]);
+        for extension in probes {
+            let path = format!("src/file{extension}");
+            assert_eq!(
+                Lang::of(&path).is_some(),
+                reads(&path, mine[0].extensions),
+                "{extension}: Lang::of and the registry disagree"
+            );
+        }
+    }
+
+    #[test]
+    fn the_registry_says_what_the_python_build_reads() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../python/fence/anchor.py");
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            return; // the Python sources are not alongside this copy
+        };
+        let line = |prefix: &str| {
+            source
+                .lines()
+                .find(|l| l.starts_with(prefix))
+                .unwrap_or_else(|| panic!("no `{prefix}` in python/fence/anchor.py"))
+                .to_string()
+        };
+        let version: u32 = line("ANCHOR_VERSION = ")["ANCHOR_VERSION = ".len()..].trim().parse().unwrap();
+        let extensions: Vec<String> = line("EXTENSIONS = ")
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect();
+        let python = BUILDS.iter().find(|b| b.implementation == "python").unwrap();
+        assert_eq!(python.scheme, version);
+        assert_eq!(python.extensions, extensions);
+        let schemes: std::collections::HashSet<u32> = BUILDS.iter().map(|b| b.scheme).collect();
+        assert_eq!(schemes.len(), BUILDS.len(), "one build per scheme");
+    }
+
+    #[test]
+    fn a_rust_path_is_named_by_its_last_segment() {
+        assert_eq!(last_path_segment("std::fmt::Display"), "Display");
+        assert_eq!(last_path_segment("Display"), "Display");
+        assert_eq!(last_path_segment("a::Wrapper<b::T>"), "Wrapper<b::T>");
+    }
 
     #[test]
     fn vendored_and_minified_files_are_not_where_reasons_live() {

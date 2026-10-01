@@ -20,8 +20,8 @@ jobs:
       matrix:
         python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Unit, end-to-end and conformance tests
@@ -32,9 +32,28 @@ jobs:
     name: rust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Toolchain
         run: cargo --version && rustc --version
       - name: Conformance cases and the end-to-end command
         run: cargo test -- --nocapture
         working-directory: rust
+
+  action:
+    # The action other repositories pin, run against this repository's own
+    # notes. They were written by the Python build, so that is the one asked;
+    # --strict fails if any of them stopped being compared.
+    name: action (${{ matrix.implementation }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        implementation: [python, rust]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./
+        with:
+          implementation: ${{ matrix.implementation }}
+          # The Rust build reads these notes as another scheme, which is the
+          # case --strict exists to catch; here it only has to run cleanly.
+          args: ${{ matrix.implementation == 'python' && 'check --strict' || 'check' }}

@@ -50,6 +50,25 @@ IDENT_FIELDS = {("Name", "id"): "value", ("arg", "arg"): "value",
 # them rather than reporting every one as removed.
 ANCHOR_VERSION = 3
 
+# Which build this is, and the files it reads as Python.
+IMPLEMENTATION = "python"
+EXTENSIONS = (".py", ".pyi")
+
+# Every current build: the scheme it writes, the files it reads, and what those
+# are. `fence doctor` uses it to say which build a repository's notes need, so it
+# has to describe the other build too; tests/test_cli.py holds the Rust entry to
+# rust/src/anchor.rs. A scheme missing from here is retired, or newer than this.
+BUILDS = (
+    ("python", ANCHOR_VERSION, EXTENSIONS, "Python"),
+    ("rust", 5, (".py", ".pyi", ".kt", ".kts", ".rs", ".ts", ".mts", ".cts", ".tsx",
+                 ".js", ".jsx", ".mjs", ".cjs"),
+     "Python, JavaScript, TypeScript, Kotlin and Rust"),
+)
+
+
+def reads(path: str, extensions=EXTENSIONS) -> bool:
+    return path.lower().endswith(tuple(extensions))
+
 MIN_DISTINCTIVE_TOKENS = 12
 CHANGED_THRESHOLD = 0.5
 SNIPPET_LINES = 12

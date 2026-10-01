@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -206,6 +207,97 @@ class CliTest(unittest.TestCase):
         self.assertIn(str(A.ANCHOR_VERSION), kept)
         self.assertIn("[ok]", self.fence("check")[1])
 
+    def test_strict_fails_when_no_note_could_be_compared(self):
+        """Every note in another scheme is a check guarding nothing. Plain check
+        says so and passes; --strict, for CI, fails."""
+        stored = self.repo / ".fence" / "notes" / f"{self.note['id']}.json"
+        written = json.loads(stored.read_text(encoding="utf-8"))
+        ours = written["anchors"][str(A.ANCHOR_VERSION)]
+        written["anchors"] = {"99": dict(ours, version=99, exact="x", shape="x")}
+        stored.write_text(json.dumps(written, indent=2), encoding="utf-8")
+
+        code, out = self.fence("check")
+        self.assertEqual(code, 0, out)
+        self.assertIn("nothing is being guarded", out)
+
+        code, out = self.fence("check", "--strict")
+        self.assertEqual(code, 1, out)
+        code, out = self.fence("check", "--strict", "--json")
+        self.assertEqual(code, 1, out)
+        payload = json.loads(out)
+        self.assertEqual(payload["uncompared"], 1)
+        self.assertTrue(payload["blocked"])
+
+        self.fence("update")
+        self.assertEqual(self.fence("check", "--strict")[0], 0)
+
+    def rescheme(self, scheme, **changes):
+        """Make the note look as though another build wrote it: one anchor, in `scheme`."""
+        stored = self.repo / ".fence" / "notes" / f"{self.note['id']}.json"
+        written = json.loads(stored.read_text(encoding="utf-8"))
+        ours = written["anchors"][str(A.ANCHOR_VERSION)]
+        written["anchors"] = {str(scheme): dict(ours, version=scheme, exact="x", shape="x",
+                                                **changes)}
+        stored.write_text(json.dumps(written, indent=2), encoding="utf-8")
+
+    def doctor(self):
+        code, out = self.fence("doctor", "--json")
+        return code, json.loads(out)
+
+    def test_doctor_approves_the_build_that_wrote_the_notes(self):
+        code, out = self.fence("doctor")
+        self.assertEqual(code, 0, out)
+        self.assertIn("This build checks every note", out)
+        self.assertIn("`implementation: python`", out)
+
+    def test_doctor_names_the_build_the_notes_need(self):
+        """The case that stays green in CI while guarding nothing: every note is
+        in a language and a scheme only the other build reads."""
+        rust = next(scheme for name, scheme, _, _ in A.BUILDS if name == "rust")
+        self.rescheme(rust, path="src/Client.kt")
+        code, report = self.doctor()
+        self.assertEqual(code, 1)
+        self.assertFalse(report["complete"])
+        self.assertEqual(report["recommend"], {"implementation": "rust", "update_first": False})
+        self.assertEqual(report["schemes"], [{"scheme": rust, "notes": 1, "build": "rust"}])
+        mine = report["builds"][0]
+        self.assertEqual((mine["implementation"], mine["now"], mine["after_update"]),
+                         ("python", 0, 0))
+        self.assertEqual(mine["cannot_read"], [".kt"])
+
+        out = self.fence("doctor")[1]
+        self.assertIn("Use the rust build", out)
+        self.assertIn("cannot read .kt", out)
+        self.assertIn("`fence check --strict` with it fails", out)
+
+    def test_doctor_sends_a_retired_scheme_to_fence_update(self):
+        self.rescheme(4)
+        code, report = self.doctor()
+        self.assertEqual(code, 1)
+        self.assertEqual(report["schemes"][0]["build"], "retired")
+        self.assertEqual(report["recommend"], {"implementation": "python", "update_first": True})
+        self.assertIn("Run `fence update` with the python build", self.fence("doctor")[1])
+
+        self.fence("update")
+        self.assertEqual(self.doctor()[0], 0)
+
+    def test_doctor_does_not_guess_at_a_scheme_it_has_never_heard_of(self):
+        self.rescheme(99)
+        code, report = self.doctor()
+        self.assertEqual(code, 1)
+        self.assertEqual(report["schemes"][0]["build"], "unknown")
+        self.assertIn("a newer fence?", self.fence("doctor")[1])
+
+    def test_doctor_with_no_notes(self):
+        self.fence("retire", self.note["id"], "-m", "the vendor fixed it")
+        code, out = self.fence("doctor")
+        self.assertEqual(code, 0, out)
+        self.assertIn("No notes yet", out)
+
+    def test_strict_points_at_doctor(self):
+        self.rescheme(99)
+        self.assertIn("fence doctor", self.fence("check", "--strict")[1])
+
     def test_init_leaves_an_explanation_for_whoever_finds_the_directory(self):
         readme = self.repo / ".fence" / "README.md"
         self.assertTrue(readme.is_file())
@@ -256,6 +348,29 @@ class CliTest(unittest.TestCase):
         code, out = self.fence("add", "app.py", "-m", "x")
         self.assertEqual(code, 2)
         self.assertIn("expected <file>:<line>", out)
+
+
+class BuildRegistryTest(unittest.TestCase):
+    """`fence doctor` describes the Rust build from here, so it must describe it right."""
+
+    def test_the_rust_entry_matches_the_rust_build(self):
+        path = Path(__file__).resolve().parents[2] / "rust" / "src" / "anchor.rs"
+        if not path.is_file():
+            self.skipTest("the Rust sources are not alongside this copy")
+        source = path.read_text(encoding="utf-8")
+        version = int(re.search(r"pub const ANCHOR_VERSION: u32 = (\d+);", source).group(1))
+        reader = source[source.index("pub fn of(path: &str)"):source.index("fn grammar(")]
+        reader = re.sub(r"//[^\n]*", "", reader)
+        extensions = set(re.findall(r'"(\.[a-z]+)"', reader))
+        _, scheme, listed, _ = next(b for b in A.BUILDS if b[0] == "rust")
+        self.assertEqual(scheme, version)
+        self.assertEqual(set(listed), extensions)
+
+    def test_this_build_is_in_the_registry(self):
+        mine = [b for b in A.BUILDS if b[0] == A.IMPLEMENTATION]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0][1:3], (A.ANCHOR_VERSION, A.EXTENSIONS))
+        self.assertEqual(len({b[1] for b in A.BUILDS}), len(A.BUILDS), "one build per scheme")
 
 
 if __name__ == "__main__":

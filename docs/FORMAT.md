@@ -90,6 +90,37 @@ the scheme that wrote it, not the program that was running:
 | 4 | tree-sitter, the same. Retired |
 | 5 | tree-sitter, with `.js`, `.jsx`, `.mjs` and `.cjs` read by the JavaScript grammar instead of TSX |
 
+Each build also carries a short list of the current builds — the scheme each writes
+and the files each reads — which is how `fence doctor` in either one can say what the
+other would make of a repository. A new scheme number or a new language means
+changing that list in both (`BUILDS` in `python/fence/anchor.py` and
+`rust/src/anchor.rs`); each build's tests compare its copy with the other's source.
+
+Kotlin (`.kt`, `.kts`) was added under scheme 5 rather than taking a number of its
+own. A number exists to say *these fingerprints moved*; adding a language moves
+none. Every Python, JavaScript and TypeScript statement hashes to exactly what it
+did before, and `.kt` had no anchors to invalidate because no build could read it.
+
+A build without the Kotlin grammar cannot parse a `.kt` file at all, so it
+declines to judge the note rather than guessing: the verdict is `unparseable`,
+which the Python implementation prints as `skipped`. It warns and never blocks,
+which is the behaviour that matters — an implementation that cannot read a
+language must not claim that code in it has been deleted.
+
+Rust (`.rs`) was added the same way, also under scheme 5, and for the same
+reason. Checked rather than assumed: `fence statements --json` over Python,
+JavaScript, TypeScript, TSX and Kotlin files gives byte-identical output from a
+build with the Rust grammar and from its parent. Three Rust answers are worth
+knowing when reading a note: comments are `line_comment` and `block_comment`
+(neither is `comment`, and both are dropped like any other); a field is in the
+attribute namespace wherever it is named; and an `impl` lends its type's name as
+the scope, qualified as `<Type as Trait>` by last path segment, so
+`Display::fmt` and `Debug::fmt` on one type are different scopes.
+
+Measured, not assumed: a Python note written under scheme 5 reads as
+`other scheme` in the scheme-3 Python build, and a Kotlin note in the same
+repository reads as `skipped`. Neither blocks a commit.
+
 Schemes 1 and 2 shared one namespace between value names and attribute names.
 Renaming a variable in real code leaves attributes spelled as they were, so in a
 file where a name is also an attribute — `Error` alongside `Generic.Error`, which

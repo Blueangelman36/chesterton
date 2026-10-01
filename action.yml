@@ -1,0 +1,98 @@
+name: fence check
+description: >-
+  Run chesterton's fence in CI, so a change that removes code with a recorded
+  reason fails the build instead of passing quietly.
+author: Blueangelman36
+branding:
+  icon: shield
+  color: gray-dark
+
+# Pin it the way you would pin any action, to a tag or a full commit:
+#
+#   - uses: actions/checkout@v7
+#   - uses: Blueangelman36/chesterton@<tag or commit>
+#     with:
+#       implementation: rust     # the build your notes were written with
+#
+# Pinning is the point. Each implementation writes its own anchor scheme, and a
+# build that does not read yours reports every note as `other scheme` -- which
+# never blocks. A downstream project once tracked this repository's main branch,
+# picked up a new scheme, and stayed green for a week while guarding nothing.
+# `check --strict`, the default here, turns that into a failure, and `fence
+# doctor` (either build, run locally) says which implementation your notes need.
+
+inputs:
+  implementation:
+    description: >-
+      `python` (reads Python; no build step) or `rust` (reads Python,
+      JavaScript, TypeScript, Kotlin and Rust; compiled on first use, then cached).
+      Use the one your notes were written with; `fence doctor` says which.
+    required: false
+    default: rust
+  args:
+    description: Arguments passed to fence.
+    required: false
+    default: check --strict
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      shell: bash
+      env:
+        IMPLEMENTATION: ${{ inputs.implementation }}
+      run: |
+        case "$IMPLEMENTATION" in
+          python|rust) ;;
+          *) echo "::error::implementation must be 'python' or 'rust', not '$IMPLEMENTATION'"; exit 2 ;;
+        esac
+
+    - name: Run fence (Python)
+      if: inputs.implementation == 'python'
+      shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}/python
+        PYTHONIOENCODING: utf-8
+        FENCE_ARGS: ${{ inputs.args }}
+      run: |
+        py=python3; command -v python3 >/dev/null 2>&1 || py=python
+        # Word splitting on FENCE_ARGS is intended: it is a command line.
+        "$py" -m fence $FENCE_ARGS
+
+    # Keyed on the sources rather than on a ref, so a branch name that moves
+    # still rebuilds, and two refs with the same code share one build.
+    - name: Fingerprint the fence sources
+      if: inputs.implementation == 'rust'
+      id: source
+      shell: bash
+      run: |
+        cd "$GITHUB_ACTION_PATH/rust"
+        echo "hash=$(find src Cargo.toml Cargo.lock -type f | sort | xargs cat | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the fence build
+      if: inputs.implementation == 'rust'
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          ~/.cache/fence-target
+        key: fence-${{ runner.os }}-${{ steps.source.outputs.hash }}
+
+    - name: Build fence (Rust)
+      if: inputs.implementation == 'rust'
+      shell: bash
+      run: |
+        export CARGO_TARGET_DIR="$HOME/.cache/fence-target"
+        cargo build --release --locked --manifest-path "$GITHUB_ACTION_PATH/rust/Cargo.toml"
+
+    - name: Run fence (Rust)
+      if: inputs.implementation == 'rust'
+      shell: bash
+      env:
+        FENCE_ARGS: ${{ inputs.args }}
+      run: |
+        exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
+        # Word splitting on FENCE_ARGS is intended: it is a command line.
+        "$HOME/.cache/fence-target/release/fence$exe" $FENCE_ARGS

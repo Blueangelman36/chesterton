@@ -4,3 +4,7 @@ build/
 dist/
 .venv/
 target/
+
+# Locally built binary, kept out of the repo: 12 MB, and platform-specific.
+# Build it with: cargo build --release  (see docs/BUILDING.md)
+bin/

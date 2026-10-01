@@ -1,0 +1,320 @@
+# The same questions, asked of Kotlin. An implementation that cannot read this
+# language skips these cases.
+#
+# Kotlin names no fields on a member access: `a.b`, `a?.b`, `a::b` and `a!!.b`
+# are all one `navigation_expression` with the receiver first and the name last.
+# So the attribute namespace is decided positionally here, and the case below
+# that renames a local next to a method of the same name is what proves it.
+
+[[case]]
+name = "a comment added above a statement does not disturb it"
+language = "kotlin"
+expect = "ok"
+anchor_match = "if (resp.body().contains"
+
+[case.before]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val resp = http.get(url)
+        if (resp.body().contains("unauthorized")) {
+            throw AuthError("200 with the error in the body")
+        }
+        return Result(resp.body())
+    }
+}
+'''
+
+[case.after]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val resp = http.get(url)
+        // The vendor returns 200 on an auth failure.
+        if (resp.body().contains("unauthorized")) {
+            throw AuthError("200 with the error in the body")
+        }
+        return Result(resp.body())
+    }
+}
+'''
+
+
+[[case]]
+name = "a consistent rename is followed"
+language = "kotlin"
+expect = "renamed"
+anchor_match = "if (resp.body().contains"
+
+[case.before]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val resp = http.get(url)
+        if (resp.body().contains("unauthorized")) {
+            throw AuthError("200 with the error in the body")
+        }
+        return Result(resp.body())
+    }
+}
+'''
+
+[case.after]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val response = http.get(url)
+        if (response.body().contains("unauthorized")) {
+            throw AuthError("200 with the error in the body")
+        }
+        return Result(response.body())
+    }
+}
+'''
+
+
+# Scheme 3 exists because a name renamed on the value side must not shift the
+# numbering of an attribute spelled the same way. `body` is both a local and a
+# method here; renaming the local must not read as a deletion.
+[[case]]
+name = "renaming a local does not renumber a method spelled the same way"
+language = "kotlin"
+expect = "renamed"
+anchor_match = "if (body.contains"
+
+[case.before]
+"Parse.kt" = '''
+package demo
+
+object Parse {
+    fun check(resp: Response): Boolean {
+        val body = resp.body()
+        if (body.contains(resp.body().trim())) {
+            return true
+        }
+        return false
+    }
+}
+'''
+
+[case.after]
+"Parse.kt" = '''
+package demo
+
+object Parse {
+    fun check(resp: Response): Boolean {
+        val payload = resp.body()
+        if (payload.contains(resp.body().trim())) {
+            return true
+        }
+        return false
+    }
+}
+'''
+
+
+[[case]]
+name = "a statement that moves to another object in another file is followed"
+language = "kotlin"
+expect = "moved"
+expect_file = "Guard.kt"
+expect_scope = "Guard.verify"
+anchor_match = "if (resp.body().contains"
+
+[case.before]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val resp = http.get(url)
+        if (resp.body().contains("unauthorized")) {
+            throw AuthError("200 with the error in the body")
+        }
+        return Result(resp.body())
+    }
+}
+'''
+
+[case.after]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val resp = http.get(url)
+        Guard.verify(resp)
+        return Result(resp.body())
+    }
+}
+'''
+"Guard.kt" = '''
+package demo
+
+object Guard {
+    fun verify(resp: Response) {
+        if (resp.body().contains("unauthorized")) {
+            throw AuthError("200 with the error in the body")
+        }
+    }
+}
+'''
+
+
+[[case]]
+name = "deleting the statement is a removal"
+language = "kotlin"
+expect = "removed"
+anchor_match = "if (resp.body().contains"
+
+[case.before]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val resp = http.get(url)
+        if (resp.body().contains("unauthorized")) {
+            throw AuthError("200 with the error in the body")
+        }
+        return Result(resp.body())
+    }
+}
+'''
+
+[case.after]
+"Client.kt" = '''
+package demo
+
+class Client(private val http: Http) {
+    fun fetch(url: String): Result {
+        val resp = http.get(url)
+        return Result(resp.body())
+    }
+}
+'''
+
+
+# A companion object carries no name in the grammar. Without one supplied, its
+# members would land in the enclosing class's scope, where they can collide with
+# instance members spelled the same way.
+[[case]]
+name = "a companion object is a scope of its own"
+language = "kotlin"
+expect = "ok"
+expect_scope = "Worker.Companion.schedule"
+anchor_match = "val request = PeriodicWorkRequestBuilder"
+
+[case.before]
+"Worker.kt" = '''
+package demo
+
+class Worker {
+    fun schedule() {
+        val request = "instance"
+        use(request)
+    }
+
+    companion object {
+        fun schedule() {
+            val request = PeriodicWorkRequestBuilder(15, MINUTES)
+            enqueue(request)
+        }
+    }
+}
+'''
+
+[case.after]
+"Worker.kt" = '''
+package demo
+
+class Worker {
+    fun schedule() {
+        val request = "instance"
+        use(request)
+    }
+
+    companion object {
+        fun schedule() {
+            // Kept at 15 minutes; the platform rounds anything shorter up.
+            val request = PeriodicWorkRequestBuilder(15, MINUTES)
+            enqueue(request)
+        }
+    }
+}
+'''
+
+
+# Gradle build files are Kotlin, and are where a project's load-bearing oddities
+# tend to live: a pinned version, a signing config, a flag with a reason.
+[[case]]
+name = "a .kts build file is read as Kotlin"
+language = "kotlin"
+expect = "ok"
+anchor_match = "buildConfig = true"
+
+[case.before]
+"build.gradle.kts" = '''
+android {
+    namespace = "com.example.app"
+    compileSdk = 35
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+}
+'''
+
+[case.after]
+"build.gradle.kts" = '''
+android {
+    namespace = "com.example.app"
+    compileSdk = 35
+
+    buildFeatures {
+        compose = true
+        // VERSION_NAME, so the app can tell whether a release is newer than it.
+        buildConfig = true
+    }
+}
+'''
+
+
+# Property delegation is ordinary Kotlin and is how this project reaches its
+# settings store, so it has to survive being read.
+[[case]]
+name = "a delegated property is anchorable"
+language = "kotlin"
+expect = "renamed"
+anchor_match = "private val Context.settingsStore"
+
+[case.before]
+"Settings.kt" = '''
+package demo
+
+private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore("app_settings")
+
+object AppSettings {
+    fun read() = 1
+}
+'''
+
+[case.after]
+"Settings.kt" = '''
+package demo
+
+private val Context.appStore: DataStore<Preferences> by preferencesDataStore("app_settings")
+
+object AppSettings {
+    fun read() = 1
+}
+'''

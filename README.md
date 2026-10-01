@@ -66,7 +66,8 @@ fence: 1559744b now follows client.py:4  in Client.fetch
 | `fence suggest [PATH]` | Statements whose reason is probably not written down, worst first. `--why` for every signal, `--json` for tooling |
 | `fence add FILE:LINE[-END] -m "why"` | Record why a statement exists. `--from-blame` borrows the message of the commit that wrote the line; `--source` records a link or ticket |
 | `fence list [PATH]` | List notes |
-| `fence check [--staged]` | Find each note's code and report what happened to it. `--staged` is what the hook runs: staged files only |
+| `fence check [--staged] [--strict]` | Find each note's code and report what happened to it. `--staged` is what the hook runs: staged files only. `--strict` is for CI: it also fails when a note could not be compared at all (written by another build or scheme, or its file does not parse), which otherwise only warns |
+| `fence doctor` | Which build can check this repository's notes, and so which one CI should run. Exits 1 when the build you ran cannot check them all. `--json` for tooling |
 | `fence update` | Re-pin notes whose code was renamed or moved |
 | `fence confirm ID` | The code changed, but the reason still holds |
 | `fence reanchor ID FILE:LINE` | Point a note at different code |
@@ -102,6 +103,43 @@ claims by how often the same number appears in two places rather than by how imp
 Where a comment already explains, it is offered as a draft to edit. Where nothing does,
 `--from-blame` is offered instead, because the commit that wrote the line usually said why. It
 proposes nothing it cannot support, in the same way asof says `NAME` rather than inventing one.
+
+## In CI
+
+The hook only runs where someone installed it. CI runs for everyone:
+
+```yaml
+- uses: actions/checkout@v7
+- uses: Blueangelman36/chesterton@<tag or full commit>
+  with:
+    implementation: rust   # or python: the build your notes were written with
+```
+
+Not sure which build wrote your notes? Either build will tell you, from the notes alone:
+
+```text
+$ fence doctor
+fence doctor: the python build (anchor scheme 3; reads Python)
+
+16 note(s). Anchors: scheme 4 (retired) on 12, scheme 5 (the rust build) on 16.
+
+  python  checks 0 of 16 now; cannot read .js
+  rust    checks 16 of 16 now
+
+Use the rust build: it checks every note. In CI: `implementation: rust`.
+This build cannot check every note, so `fence check --strict` with it fails.
+```
+
+It runs `fence check --strict`, so it fails on a removed statement *and* on notes it
+could not compare. The second half matters more than it sounds. Each build writes its
+own anchor scheme, and a build that does not read yours reports every note as
+`other scheme`, which never blocks. A project that tracked this repository's `main`
+picked up a new scheme that way and stayed green for a week while guarding nothing —
+so pin the action, and let `--strict` catch the day a pin moves.
+
+The Rust build is compiled on first use and cached, keyed on its sources. Each tagged
+release also attaches ready-made `fence` binaries for Linux, macOS and Windows, so
+trying it does not need a C compiler.
 
 ## For coding agents
 
@@ -247,9 +285,17 @@ This is a prototype of the core loop: anchoring plus the hook.
 
 - **The reference implementation reads Python only**, using the standard library `ast` and
   `tokenize` modules — which is why it installs with no dependencies at all. The Rust
-  implementation also reads TypeScript, TSX and JavaScript, and everything language-specific there
-  is four questions in one place: what holds statements, what introduces a scope, which names are
-  attributes rather than values, and what counts as a leaf. Another language is answering those.
+  implementation also reads Rust, Kotlin, TypeScript, TSX and JavaScript, and everything
+  language-specific there is four questions in one place: what holds statements, what introduces a
+  scope, which names are attributes rather than values, and what counts as a leaf. Another
+  language is answering those. A `.kt` note checked by a build without the Kotlin grammar is
+  reported `skipped` rather than judged, which warns and never blocks.
+- **A Kotlin class body written entirely on one line cannot be read.** `class A { init { ... } }`
+  on a single line fails in the tree-sitter Kotlin grammar, and one failure writes off the whole
+  file. Every one of those constructs parses when written across lines, which is how ktlint and
+  the IDE format them, so in practice this shows up in hand-written one-liners rather than in
+  normal code. Property delegation, custom getters, `companion object`, sealed hierarchies,
+  interfaces, `object :` expressions and Compose lambdas all read correctly multi-line.
 - **A TypeScript file that uses `unique`, `keyof` or `infer` as a variable cannot be read.** Those
   are type operators, and the tree-sitter TypeScript grammars fail on `i < unique.length` even
   though it is valid TypeScript — and one failure writes off the whole file, so every note in it
@@ -290,7 +336,11 @@ This is a prototype of the core loop: anchoring plus the hook.
    never blocks. Upgrading to a build with a new scheme looks the same, and `update` fixes it the
    same way.
 3. **Other languages.** The Rust side already parses with tree-sitter, so a new language is
-   mostly a grammar plus its statement and scope rules — and a set of conformance cases.
+   mostly a grammar plus its statement and scope rules — and a set of conformance cases. Kotlin
+   and Rust were added that way and needed no change to how anchoring works; see
+   `conformance/cases/kotlin.toml` and `rust.toml`. Rust was measured with
+   `tools/stress_cli.py` on this repository's own `rust/` (11 files) and on serde_json (71 files,
+   23,000 lines): 0 surprising verdicts on either.
 4. **Make it fast on large repositories**, per Status above.
 5. **Surface notes where people are:** a PR check, and an editor hint on hover.
 
@@ -299,7 +349,7 @@ This is a prototype of the core loop: anchoring plus the hook.
 | Path | What |
 | --- | --- |
 | `python/` | The reference implementation: `fence/`, its tests, and the measurement harnesses in `tools/` |
-| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python, JavaScript and TypeScript |
+| `rust/` | Second implementation, on tree-sitter: the same commands in a single binary, reads Python, JavaScript, TypeScript, Kotlin and Rust |
 | `conformance/cases/*.toml` | Language-neutral cases every implementation must agree on |
 | `docs/FORMAT.md` | The note format, and the rules an implementation must honour |
 | `docs/BUILDING.md` | Building the Rust implementation, and the three ways that goes wrong on Windows |

@@ -22,8 +22,8 @@ jobs:
     name: build the distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Tests must pass before anything is built
@@ -34,7 +34,7 @@ jobs:
           python -m pip install --upgrade build
           python -m build
         working-directory: python
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: distribution
           path: python/dist/
@@ -47,8 +47,65 @@ jobs:
     permissions:
       id-token: write  # the OIDC token trusted publishing uses, and nothing else
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: distribution
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  binaries:
+    # Building fence needs a C compiler, because the tree-sitter grammars are C.
+    # On Windows that is the hard part (docs/BUILDING.md), so every release
+    # carries a ready-made binary and nobody has to build one to try it.
+    # Independent of PyPI: a release without the PyPI setup still gets these.
+    name: fence binary (${{ matrix.asset }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: fence-linux-x86_64
+          - os: macos-latest
+            asset: fence-macos-arm64
+          - os: windows-latest
+            asset: fence-windows-x86_64.exe
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tests must pass on this platform before it ships
+        run: cargo test --release --locked
+        working-directory: rust
+      - name: Build
+        run: cargo build --release --locked
+        working-directory: rust
+      - name: Name the binary
+        shell: bash
+        run: |
+          src=rust/target/release/fence
+          [ "$RUNNER_OS" = "Windows" ] && src="$src.exe"
+          mkdir -p out
+          cp "$src" "out/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset }}
+          path: out/${{ matrix.asset }}
+          if-no-files-found: error
+
+  github-release:
+    name: attach binaries to the GitHub release
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # creating the release, and nothing else
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fence-*
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        run: cd out && sha256sum fence-* > SHA256SUMS
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: out/*
+          generate_release_notes: true

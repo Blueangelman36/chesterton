@@ -13,6 +13,7 @@ branding:
 #   - uses: Blueangelman36/chesterton@<tag or commit>
 #     with:
 #       implementation: rust     # the build your notes were written with
+#       comment-on-pr: true      # quote the reasons a pull request touches
 #
 # Pinning is the point. Each implementation writes its own anchor scheme, and a
 # build that does not read yours reports every note as `other scheme` -- which
@@ -33,6 +34,17 @@ inputs:
     description: Arguments passed to fence.
     required: false
     default: check --strict
+  comment-on-pr:
+    description: >-
+      `true` to post the recorded reasons a pull request touches as one comment
+      on it, updated on every push. Needs `permissions: pull-requests: write` in
+      the calling job. Does nothing outside pull requests.
+    required: false
+    default: "false"
+  token:
+    description: The token used to comment. The default is the workflow's own.
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: composite
@@ -41,23 +53,16 @@ runs:
       shell: bash
       env:
         IMPLEMENTATION: ${{ inputs.implementation }}
+        COMMENT: ${{ inputs.comment-on-pr }}
       run: |
         case "$IMPLEMENTATION" in
           python|rust) ;;
           *) echo "::error::implementation must be 'python' or 'rust', not '$IMPLEMENTATION'"; exit 2 ;;
         esac
-
-    - name: Run fence (Python)
-      if: inputs.implementation == 'python'
-      shell: bash
-      env:
-        PYTHONPATH: ${{ github.action_path }}/python
-        PYTHONIOENCODING: utf-8
-        FENCE_ARGS: ${{ inputs.args }}
-      run: |
-        py=python3; command -v python3 >/dev/null 2>&1 || py=python
-        # Word splitting on FENCE_ARGS is intended: it is a command line.
-        "$py" -m fence $FENCE_ARGS
+        case "$COMMENT" in
+          true|false) ;;
+          *) echo "::error::comment-on-pr must be 'true' or 'false', not '$COMMENT'"; exit 2 ;;
+        esac
 
     # Keyed on the sources rather than on a ref, so a branch name that moves
     # still rebuilds, and two refs with the same code share one build.
@@ -87,12 +92,52 @@ runs:
         export CARGO_TARGET_DIR="$HOME/.cache/fence-target"
         cargo build --release --locked --manifest-path "$GITHUB_ACTION_PATH/rust/Cargo.toml"
 
-    - name: Run fence (Rust)
-      if: inputs.implementation == 'rust'
+    # The verdict is held until the comment is posted: a pull request that removes
+    # a reasoned statement is exactly the one whose reviewers need the comment.
+    - name: Run fence
+      id: fence
       shell: bash
       env:
+        IMPLEMENTATION: ${{ inputs.implementation }}
         FENCE_ARGS: ${{ inputs.args }}
+        WANT_JSON: ${{ inputs.comment-on-pr == 'true' && github.event.pull_request.number && 'true' || 'false' }}
+        PYTHONPATH: ${{ github.action_path }}/python
+        PYTHONIOENCODING: utf-8
       run: |
-        exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
+        if [ "$IMPLEMENTATION" = python ]; then
+          py=python3; command -v python3 >/dev/null 2>&1 || py=python
+          fence() { "$py" -m fence "$@"; }
+        else
+          exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
+          fence() { "$HOME/.cache/fence-target/release/fence$exe" "$@"; }
+        fi
+        set +e
         # Word splitting on FENCE_ARGS is intended: it is a command line.
-        "$HOME/.cache/fence-target/release/fence$exe" $FENCE_ARGS
+        fence $FENCE_ARGS
+        echo "code=$?" >> "$GITHUB_OUTPUT"
+        if [ "$WANT_JSON" = true ]; then
+          fence check --json > "$RUNNER_TEMP/fence-check.json"
+        fi
+        exit 0
+
+    - name: Comment the reasons on the pull request
+      if: inputs.comment-on-pr == 'true' && github.event.pull_request.number
+      shell: bash
+      env:
+        CHECK_JSON: ${{ runner.temp }}/fence-check.json
+        GITHUB_TOKEN: ${{ inputs.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        py=python3; command -v python3 >/dev/null 2>&1 || py=python
+        "$py" "$GITHUB_ACTION_PATH/action/pr_comment.py"
+
+    - name: Verdict
+      shell: bash
+      env:
+        CODE: ${{ steps.fence.outputs.code }}
+      run: |
+        code="${CODE:-1}"
+        [ "$code" = 0 ] || echo "::error::fence exited $code. Its report is in the 'Run fence' step above."
+        exit "$code"

@@ -10,6 +10,8 @@ name: Release
 #     workflow: release.yml   environment: pypi
 # and create a `pypi` environment in the repository settings. Requiring the
 # environment means a tag alone cannot publish: the run has to pass through it.
+# Then set the repository variable PUBLISH_TO_PYPI to `true`. Until then the
+# publish job is skipped rather than failed, and the binaries still ship.
 #
 # Nothing here runs on a normal push. A release happens only when someone tags.
 
@@ -29,6 +31,18 @@ jobs:
       - name: Tests must pass before anything is built
         run: python -m unittest
         working-directory: python
+      # A tag that disagrees with the code publishes a version number that means
+      # nothing, and PyPI never lets that number be used again.
+      - name: The tag, the package, the module and the crate agree on the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          declared=$(python -c "import tomllib; print(tomllib.load(open('python/pyproject.toml','rb'))['project']['version'])")
+          module=$(cd python && python -c "import fence; print(fence.__version__)")
+          crate=$(python -c "import tomllib; print(tomllib.load(open('rust/Cargo.toml','rb'))['package']['version'])")
+          if [ "$tag" != "$declared" ] || [ "$tag" != "$module" ] || [ "$tag" != "$crate" ]; then
+            echo "::error::tag v$tag, pyproject.toml $declared, fence.__version__ $module, Cargo.toml $crate"
+            exit 1
+          fi
       - name: Build wheel and sdist
         run: |
           python -m pip install --upgrade build
@@ -42,6 +56,7 @@ jobs:
   publish:
     name: publish to PyPI
     needs: build
+    if: vars.PUBLISH_TO_PYPI == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -54,6 +69,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   binaries:
+    needs: build  # the version check and the tests, before anything ships
     # Building fence needs a C compiler, because the tree-sitter grammars are C.
     # On Windows that is the hard part (docs/BUILDING.md), so every release
     # carries a ready-made binary and nobody has to build one to try it.

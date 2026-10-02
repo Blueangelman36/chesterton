@@ -45,6 +45,9 @@ jobs:
     # --strict fails if any of them stopped being compared.
     name: action (${{ matrix.implementation }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # the reasons comment, from the Python leg only
     strategy:
       fail-fast: false
       matrix:
@@ -57,3 +60,5 @@ jobs:
           # The Rust build reads these notes as another scheme, which is the
           # case --strict exists to catch; here it only has to run cleanly.
           args: ${{ matrix.implementation == 'python' && 'check --strict' || 'check' }}
+          # One writer, so two legs never race to create the same comment.
+          comment-on-pr: ${{ matrix.implementation == 'python' }}

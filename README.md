@@ -113,7 +113,15 @@ The hook only runs where someone installed it. CI runs for everyone:
 - uses: Blueangelman36/chesterton@<tag or full commit>
   with:
     implementation: rust   # or python: the build your notes were written with
+    comment-on-pr: true    # optional: quote the reasons a pull request touches
 ```
+
+With `comment-on-pr: true` (and `permissions: pull-requests: write` on the job), a pull
+request that changes, moves, renames or removes code with a recorded reason gets one
+comment quoting those reasons, kept up to date on every push. The hook only speaks to
+whoever is committing; this puts the same thing in front of whoever reviews and merges.
+A pull request that touches nothing reasoned gets no comment at all, and one whose
+problem is fixed has its comment turned into an all-clear rather than left standing.
 
 Not sure which build wrote your notes? Either build will tell you, from the notes alone:
 
@@ -342,7 +350,9 @@ This is a prototype of the core loop: anchoring plus the hook.
    `tools/stress_cli.py` on this repository's own `rust/` (11 files) and on serde_json (71 files,
    23,000 lines): 0 surprising verdicts on either.
 4. **Make it fast on large repositories**, per Status above.
-5. **Surface notes where people are:** a PR check, and an editor hint on hover.
+5. **Surface notes where people are.** The pull request half is done: the action's
+   `comment-on-pr` quotes the reasons a pull request touches. An editor hint on hover
+   is the other half.
 
 ## Layout
 

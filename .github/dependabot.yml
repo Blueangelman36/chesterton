@@ -1,0 +1,25 @@
+# Weekly pull requests when something this repository depends on has a new
+# version, grouped so a busy week is one pull request per ecosystem, not ten.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The Rust build's dependencies. The Python build has none.
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns: ["*"]
+    # Never the parsers. A grammar update can reshape the tree under every note
+    # and move fingerprints -- that is a new anchor scheme (docs/FORMAT.md), done
+    # deliberately with fence update, not a routine bump merged on a green build.
+    ignore:
+      - dependency-name: "tree-sitter*"

@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 # A copy of the root LICENSE: a license file must sit inside the project directory.
 license-files = ["LICENSE"]
-requires-python = ">=3.11"
+requires-python = ">=3.11"  # asof:python-version
 dependencies = []
 keywords = ["git", "hooks", "pre-commit", "code-review", "documentation", "refactoring"]
 classifiers = [

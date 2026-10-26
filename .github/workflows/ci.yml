@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"  # the oldest requires-python allows
+          python-version: "3.11"  # the oldest requires-python allows: asof:python-version
       - name: The packaged licence is the repository's licence
         run: cmp LICENSE python/LICENSE
       - name: Build, and check what PyPI will render
@@ -68,6 +68,23 @@ jobs:
           if git commit -qam "simplify"; then
             echo "::error::the installed fence did not block removing a recorded line"; exit 1
           fi
+
+  claims:
+    # The numbers the documents state, checked by asof (its sibling tool).
+    # Today that is the oldest supported Python, written in both READMEs,
+    # requires-python and the package job above; the root README once said
+    # 3.10+ while the package required 3.11, and nothing noticed.
+    name: claims
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Pinned by commit, like every tool that checks this build. This commit is
+      # the first that reads requires-python and .github; move the pin to asof's
+      # v0.4.1 tag once it exists.
+      - uses: Blueangelman36/asof@698c7a3b7bb61db67e8dcb755323d2935151f11c
 
   rust:
     name: rust

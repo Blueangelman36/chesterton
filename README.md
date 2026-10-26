@@ -16,7 +16,7 @@ only at the moment it matters: when a commit removes something that has a record
 
 ## Try it
 
-No dependencies. Python 3.11+.
+No dependencies. Python 3.11+. <!-- asof:python-version -->
 
 ```bash
 git clone https://github.com/Blueangelman36/chesterton

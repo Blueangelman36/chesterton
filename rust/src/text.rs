@@ -119,4 +119,5 @@ remember why code exists, and speak up before it's removed.
   confirm ID                          the code changed, but the reason still holds
   reanchor ID FILE:LINE               point a note at different code
   retire ID -m "what changed"         the reason no longer applies
+  --version                           which version and build this is
 "#;

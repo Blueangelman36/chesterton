@@ -16,7 +16,7 @@ only at the moment it matters: when a commit removes something that has a record
 
 ## Try it
 
-No dependencies. Python 3.10+.
+No dependencies. Python 3.11+.
 
 ```bash
 git clone https://github.com/Blueangelman36/chesterton
@@ -166,6 +166,15 @@ fence check --json                # what a blocked commit is objecting to
 `fence init --agents` writes the instructions where agents will actually meet them: a block in
 `AGENTS.md` and a skill in `.claude/skills/fence/`. Discovery is the whole problem — a tool an
 agent never hears about may as well not exist. It appends once and is safe to re-run.
+
+In Claude Code the same skill also installs as a plugin, for every project at once:
+
+```text
+/plugin marketplace add Blueangelman36/chesterton
+/plugin install fence@chesterton
+```
+
+The plugin teaches the agent to use `fence`; the tool itself still has to be installed.
 
 ## How it finds code again
 

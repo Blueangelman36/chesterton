@@ -45,8 +45,9 @@ short-lived OIDC token that only that workflow can obtain.
 ```bash
 # 1. Decide the version. It stays 0.x while the anchor format is still moving --
 #    docs/FORMAT.md has changed twice already, and each change re-pins every note.
-#    It lives in three places, and the workflow refuses a tag that disagrees with any.
-$EDITOR python/pyproject.toml python/fence/__init__.py rust/Cargo.toml
+#    It lives in four places, and the workflow refuses a tag that disagrees with any.
+$EDITOR python/pyproject.toml python/fence/__init__.py rust/Cargo.toml .claude-plugin/plugin.json
+#    (any cargo build then updates rust/Cargo.lock to match; commit it too)
 
 # 2. Check what would ship, from a clean checkout.
 python -m build python
@@ -54,9 +55,13 @@ python -m twine check python/dist/*
 python -m zipfile -l python/dist/chesterton-*.whl
 
 # 3. Tag. The tag is what triggers the release workflow.
-git tag -a v0.1.0 -m "First release"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "First release on PyPI"
+git push origin v0.1.1
 ```
+
+`v0.1.0` was tagged before the PyPI setup existed, so it produced binaries and no
+package. The first PyPI release is therefore `v0.1.1`; CI's `package` job has already
+built and installed exactly what it will upload.
 
 Then watch the run. The `publish` job waits on the `pypi` environment, or is skipped
 if `PUBLISH_TO_PYPI` is not set.

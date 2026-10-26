@@ -1,0 +1,13 @@
+{
+  "name": "fence",
+  "version": "0.1.1",
+  "description": "Teaches Claude to ask why code exists before changing it, and to resolve commits that fence blocks. Needs the fence tool: pip install chesterton.",
+  "author": {
+    "name": "Blueangelman36"
+  },
+  "homepage": "https://github.com/Blueangelman36/chesterton",
+  "repository": "https://github.com/Blueangelman36/chesterton",
+  "license": "MIT",
+  "keywords": ["git", "pre-commit", "code-review", "refactoring", "agents"],
+  "skills": "./.claude/skills/"
+}

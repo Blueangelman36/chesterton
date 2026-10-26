@@ -8,7 +8,7 @@ import traceback
 from collections import Counter
 from pathlib import Path
 
-from . import FenceError
+from . import FenceError, __version__
 from . import anchor as A
 from . import suggest as suggestions
 from .cache import Cache
@@ -748,6 +748,8 @@ def _first_difference(was: str, now: str) -> tuple[str, str]:
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="fence", description=__doc__.split(": ", 1)[1])
+    # Names the implementation too: the two builds read notes differently (fence doctor).
+    p.add_argument("--version", action="version", version=f"fence {__version__} (python)")
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
 
     s = sub.add_parser("init", help="install the pre-commit hook")

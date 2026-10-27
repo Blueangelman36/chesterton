@@ -59,6 +59,11 @@ fn run(argv: &[String]) -> Result<i32, Error> {
             print!("{}", text::USAGE);
             Ok(0)
         }
+        // Names the implementation too: the two builds read notes differently (fence doctor).
+        "--version" => {
+            println!("fence {} (rust)", env!("CARGO_PKG_VERSION"));
+            Ok(0)
+        }
         other => Err(Error(format!("unknown command {other:?}; try `fence --help`"))),
     }
 }

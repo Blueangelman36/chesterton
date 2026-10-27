@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "claims": {
+    "python-version": {
+      "value": "3.11",
+      "checked": "2026-10-26T03:31:31Z",
+      "source": "run",
+      "files": [
+        ".github/workflows/ci.yml",
+        "README.md",
+        "python/README.md",
+        "python/pyproject.toml"
+      ]
+    }
+  }
+}

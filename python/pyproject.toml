@@ -1,21 +1,22 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "chesterton"
-version = "0.1.0"
+version = "0.1.1"
 description = "Remember why code exists, and speak up before it's removed."
 readme = "README.md"
-license = { text = "MIT" }
-requires-python = ">=3.11"
+license = "MIT"
+# A copy of the root LICENSE: a license file must sit inside the project directory.
+license-files = ["LICENSE"]
+requires-python = ">=3.11"  # asof:python-version
 dependencies = []
 keywords = ["git", "hooks", "pre-commit", "code-review", "documentation", "refactoring"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

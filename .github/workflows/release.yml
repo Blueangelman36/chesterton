@@ -33,14 +33,15 @@ jobs:
         working-directory: python
       # A tag that disagrees with the code publishes a version number that means
       # nothing, and PyPI never lets that number be used again.
-      - name: The tag, the package, the module and the crate agree on the version
+      - name: The tag, the package, the module, the crate and the plugin agree on the version
         run: |
           tag="${GITHUB_REF_NAME#v}"
           declared=$(python -c "import tomllib; print(tomllib.load(open('python/pyproject.toml','rb'))['project']['version'])")
           module=$(cd python && python -c "import fence; print(fence.__version__)")
           crate=$(python -c "import tomllib; print(tomllib.load(open('rust/Cargo.toml','rb'))['package']['version'])")
-          if [ "$tag" != "$declared" ] || [ "$tag" != "$module" ] || [ "$tag" != "$crate" ]; then
-            echo "::error::tag v$tag, pyproject.toml $declared, fence.__version__ $module, Cargo.toml $crate"
+          plugin=$(python -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          if [ "$tag" != "$declared" ] || [ "$tag" != "$module" ] || [ "$tag" != "$crate" ] || [ "$tag" != "$plugin" ]; then
+            echo "::error::tag v$tag, pyproject.toml $declared, fence.__version__ $module, Cargo.toml $crate, plugin.json $plugin"
             exit 1
           fi
       - name: Build wheel and sdist

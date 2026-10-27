@@ -1,0 +1,14 @@
+{
+  "name": "chesterton",
+  "owner": {
+    "name": "Blueangelman36"
+  },
+  "description": "fence: remember why code exists, and speak up before it's removed.",
+  "plugins": [
+    {
+      "name": "fence",
+      "source": "./",
+      "description": "Ask why code exists before changing it, and resolve commits fence blocks."
+    }
+  ]
+}

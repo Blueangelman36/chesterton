@@ -50,7 +50,7 @@ Python-specific, and a tree-sitter implementation for other languages is in prog
 against requests, flask, pytest, django and a slice of the standard library (3,613 files): no
 false alarms, and every deliberate deletion caught.
 
-No dependencies. Python 3.11+. MIT licensed.
+No dependencies. Python 3.11+. <!-- asof:python-version --> MIT licensed.
 
 Full documentation, the note format specification, and the conformance suite live in the
 repository.

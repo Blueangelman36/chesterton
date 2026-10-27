@@ -28,6 +28,64 @@ jobs:
         run: python -m unittest -v
         working-directory: python
 
+  package:
+    # What `pip install chesterton` will get, built and installed the way a
+    # stranger would: outside the source tree, so a module that is only found
+    # because the tests run from python/ cannot pass here. Without this the
+    # package is first built on release day, and a PyPI version number that
+    # ships broken can never be used again.
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"  # the oldest requires-python allows: asof:python-version
+      - name: The packaged licence is the repository's licence
+        run: cmp LICENSE python/LICENSE
+      - name: Build, and check what PyPI will render
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build python
+          python -m twine check --strict python/dist/*
+      - name: Install the wheel in a clean environment and use it
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install python/dist/*.whl
+          unzip -l python/dist/*.whl | grep -q 'dist-info/licenses/LICENSE'
+          cd "$RUNNER_TEMP"
+          fence="$RUNNER_TEMP/venv/bin/fence"
+          "$fence" --version
+          git init -q demo && cd demo
+          git config user.email ci@example.com && git config user.name CI
+          printf 'def f(r):\n    if r.ok and "error" not in r.body:\n        return r\n' > client.py
+          git add -A && git commit -qm init
+          "$fence" init
+          "$fence" add client.py:2 -m "the vendor returns 200 on auth failure"
+          git add -A && git commit -qm "record why"
+          # Deleting the guarded line must be refused by the hook.
+          printf 'def f(r):\n    return r\n' > client.py
+          if git commit -qam "simplify"; then
+            echo "::error::the installed fence did not block removing a recorded line"; exit 1
+          fi
+
+  claims:
+    # The numbers the documents state, checked by asof (its sibling tool).
+    # Today that is the oldest supported Python, written in both READMEs,
+    # requires-python and the package job above; the root README once said
+    # 3.10+ while the package required 3.11, and nothing noticed.
+    name: claims
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Pinned by commit, like every tool that checks this build. This commit is
+      # the first that reads requires-python and .github; move the pin to asof's
+      # v0.4.1 tag once it exists.
+      - uses: Blueangelman36/asof@698c7a3b7bb61db67e8dcb755323d2935151f11c
+
   rust:
     name: rust
     runs-on: ubuntu-latest

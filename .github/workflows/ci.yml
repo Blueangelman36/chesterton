@@ -81,10 +81,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      # Pinned by commit, like every tool that checks this build. This commit is
-      # the first that reads requires-python and .github; move the pin to asof's
-      # v0.4.1 tag once it exists.
-      - uses: Blueangelman36/asof@698c7a3b7bb61db67e8dcb755323d2935151f11c
+      # Pinned to a release by its commit, like every tool that checks this build.
+      # v0.4.1 is the first release that reads requires-python and .github.
+      - uses: Blueangelman36/asof@53f3645bffc2a93a2a16c81ff96a5df4febc4c94 # v0.4.1
 
   rust:
     name: rust

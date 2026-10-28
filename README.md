@@ -19,9 +19,13 @@ only at the moment it matters: when a commit removes something that has a record
 No dependencies. Python 3.11+. <!-- asof:python-version -->
 
 ```bash
-git clone https://github.com/Blueangelman36/chesterton
-pip install -e chesterton/python  # or run it in place: python -m fence
+pip install chesterton    # the package's name on PyPI; the command is fence
 ```
+
+From source instead: `git clone https://github.com/Blueangelman36/chesterton` and
+`pip install -e chesterton/python`, or run it in place with `python -m fence`. Each
+[release](https://github.com/Blueangelman36/chesterton/releases) also carries a
+ready-made `fence` binary of the Rust build for Linux, macOS and Windows.
 
 ```text
 $ fence init

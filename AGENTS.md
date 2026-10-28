@@ -55,5 +55,5 @@ install step, no virtualenv and no network.
 
 Here only one number is a claim: the oldest supported Python, stated in both
 READMEs, `python/pyproject.toml` and the CI `package` job. Install asof with
-`pip install git+https://github.com/Blueangelman36/asof`.
+`pip install asof-claims` (the command is `asof`).
 <!-- /asof -->

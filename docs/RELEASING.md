@@ -1,7 +1,8 @@
 # Releasing
 
-Everything here is prepared but nothing is published. The first upload claims the
-name `chesterton` on PyPI permanently, so it is worth doing deliberately.
+`chesterton` is on PyPI: the first release, 0.1.1, was published on 2026-10-28. The
+one-time setup below is done, and is kept for reference. A new version is only the
+steps under **Releasing**.
 
 ## Read this first
 
